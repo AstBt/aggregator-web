@@ -76,12 +76,6 @@ class ChannelResult:
             current.append(url)
         self.nodes.subscribe = current
 
-    def add_uris(self, uris: list[str] | None) -> None:
-        if not uris:
-            return
-        self.nodes.uris = list(dict.fromkeys(self.nodes.uris + [item for item in uris if item]))
-
-
 @dataclass
 class CrawlContext:
     mode: int
@@ -94,11 +88,3 @@ class CrawlContext:
     num_threads: int = 50
     display: bool = True
     proxy: str = ""
-
-
-@dataclass
-class ValidateResult:
-    proxies: set[str] | None = None
-    available: object | None = None
-    potential: dict[str, object] | None = None
-    unknown: str | None = None

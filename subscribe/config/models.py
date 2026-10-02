@@ -123,32 +123,6 @@ class TaskParams:
             enable=pick(self.enable, override.enable),
         )
 
-    def apply_to_site(self, site: SiteConfig) -> None:
-        if self.name is not None and not site.name:
-            site.name = self.name
-        if self.rename is not None and not site.rename:
-            site.rename = self.rename
-        if self.include is not None and not site.include:
-            site.include = self.include
-        if self.exclude is not None and not site.exclude:
-            site.exclude = self.exclude
-        if self.push_to is not None and not site.push_to:
-            site.push_to = list(self.push_to)
-        if self.check_alive is not None and site.check_alive is True:
-            site.check_alive = self.check_alive
-        if self.ignore_default_exclude is not None:
-            site.ignore_default_exclude = self.ignore_default_exclude
-        if self.require_tls is not None:
-            site.require_tls = self.require_tls
-        if self.max_rate is not None:
-            site.max_rate = self.max_rate
-        if self.coupon is not None and not site.coupon:
-            site.coupon = self.coupon
-        if self.invite_code is not None and not site.invite_code:
-            site.invite_code = self.invite_code
-        if self.api_prefix is not None and site.api_prefix == "/api/v1/":
-            site.api_prefix = self.api_prefix
-
     def to_dict(self) -> dict[str, object]:
         payload = {}
         names = (

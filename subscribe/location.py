@@ -462,19 +462,6 @@ def lookup_ip_geo(ip: str, reader: database.Reader) -> GeoInfo:
         return GeoInfo()
 
 
-def query_ip_country(ip: str, reader: database.Reader) -> str:
-    """
-    Query country information for an IP address using mmdb database
-
-    Args:
-        ip: The IP address to query
-        reader: The mmdb database reader
-
-    Returns:
-        The country name in Chinese
-    """
-    return lookup_ip_geo(ip, reader).country
-
 
 def locate_by_geoip(proxy: dict[str, object], reader: database.Reader) -> dict[str, object]:
     if not proxy or not isinstance(proxy, dict):

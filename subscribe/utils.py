@@ -383,20 +383,6 @@ def hide(url: str) -> str:
     return url[:-7] + "*" * 7
 
 
-def parse_token(url: str) -> str:
-    if not isurl(url):
-        return ""
-
-    result = urllib.parse.urlparse(url=url)
-    if result.query:
-        params = {k: v[0] for k, v in urllib.parse.parse_qs(result.query).items()}
-        if "token" in params:
-            return params.get("token", "")
-
-    group = re.findall(".*/link/([a-zA-Z0-9]+)", url, flags=re.I)
-    content = trim(group[0]) if group else ""
-    return content.lower() if content else url.lower()
-
 
 def mask(url: str) -> str:
     url = trim(text=url)
@@ -500,43 +486,6 @@ def url_complete(url: str, secret: bool = False) -> str:
     return url
 
 
-def load_emoji_pattern(filepath: str = "") -> dict[str, str]:
-    filepath = trim(filepath)
-    if not filepath:
-        workspace = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
-        filepath = os.path.join(workspace, "subconverter", "snippets", "emoji.txt")
-
-    if not os.path.exists(filepath) or not os.path.isfile(filepath):
-        logger.warning(f"cannot parse emoji config due to file {filepath} not exists")
-        return {}
-
-    # see: https://github.com/tindy2013/subconverter/blob/master/base/snippets/emoji.txt
-    patterns = {}
-    with open(filepath, "r", encoding="utf-8") as f:
-        for line in f.readlines():
-            line = trim(line)
-            if not line or line.startswith("#"):
-                continue
-
-            try:
-                regex, emoji = line.rsplit(",", maxsplit=1)
-                pattern = re.compile(regex, flags=re.I)
-                patterns[pattern] = emoji
-            except ValueError:
-                logger.warning(f"cannot parse emoji config due to invalid line: {line}")
-
-    return patterns
-
-
-def get_emoji(text: str, patterns: dict[str, str], default: str = "") -> str:
-    if not patterns or type(patterns) != dict or not text or type(text) != str:
-        return default
-
-    for pattern, emoji in patterns.items():
-        if pattern.search(text):
-            return emoji
-
-    return default
 
 
 def get_subpath(api_prefix: str, default: str = "/api/v1/") -> str:

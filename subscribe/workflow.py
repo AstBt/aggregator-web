@@ -137,16 +137,6 @@ def cleanup(filepath: str = "", filenames: list[str] | None = None) -> None:
             os.remove(filename)
 
 
-def dedup_task(tasks: list[TaskConfig]) -> list[TaskConfig]:
-    if not tasks:
-        return []
-    items = []
-    for task in tasks:
-        if not exists(tasks=items, task=task):
-            items.append(task)
-
-    return items
-
 
 def exists(tasks: list[TaskConfig], task: TaskConfig) -> bool:
     if not isinstance(task, TaskConfig):
