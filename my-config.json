@@ -29,7 +29,47 @@
                         "free"
                     ]
                 },
+                "V2RayV2RayV2Ray": {
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
+                },
                 "VmessProtocol": {
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
+                },
+                "vigility": {
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
+                },
+                "theVpnInfo": {
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
+                },
+                "Freenodeshare": {
                     "include": "",
                     "exclude": "",
                     "task": {
@@ -41,6 +81,22 @@
                 }
             }
         },
+        "google": {
+            "enable": false,
+            "exclude": "",
+            "limit": 100,
+            "days": 7,
+            "exclude_sites": [],
+            "push_to": []
+        },
+        "yandex": {
+            "enable": false,
+            "exclude": "",
+            "days": 3,
+            "pages": 5,
+            "exclude_sites": [],
+            "push_to": []
+        },
         "github": {
             "enable": true,
             "pages": 2,
@@ -48,14 +104,12 @@
                 "free"
             ],
             "exclude": "",
-            "exclude_repos": []
+            "exclude_repos": [],
+            "patterns": []
         },
-        "google": {
-            "enable": false
-        },
-        "yandex": {
-            "enable": false
-        },
+        "repositories": [],
+        "pages": [],
+        "scripts": [],
         "proxy": {
             "enable": true,
             "address": "http://127.0.0.1:7897",
