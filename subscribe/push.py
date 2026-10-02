@@ -48,17 +48,6 @@ class PushTo(object):
         except:
             return False
 
-    def push_file(self, filepath: str, item: StorageItem, group: str = "", retry: int = 5) -> bool:
-        if not os.path.exists(filepath) or not os.path.isfile(filepath):
-            logger.error(f"[PushFileError] file {filepath} not found")
-            return False
-
-        content = " "
-        with open(filepath, "r", encoding="utf8") as f:
-            content = f.read()
-
-        return self.push_to(content=content, item=item, group=group, retry=retry)
-
     def push_to(self, content: str, item: StorageItem, group: str = "", retry: int = 5, **kwargs: object) -> bool:
         if not self.validate(item=item):
             logger.error(f"[PushError] push config is invalidate, domain: {self.name}")

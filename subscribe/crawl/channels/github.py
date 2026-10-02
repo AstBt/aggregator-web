@@ -163,6 +163,27 @@ def search_github_code(page: int, cookie: str, excludes: list[str] | None = None
         return []
 
 
+def _search_by_pattern(
+    pattern: tuple[str, ...], config: GithubConfig, ctx: CrawlContext, token: str, cookie: str
+) -> list[str]:
+    """在给定模式下统一调度两种认证路径的搜索:代码 + Issues 双通道"""
+    excludes = config.exclude_repos or []
+    if utils.isblank(token):
+        query = build_query(pattern, regex=True)
+        params = [[item, cookie, excludes, query] for item in range(1, config.pages + 1)]
+        results = utils.multi_thread_run(func=search_github_code, tasks=params, num_threads=ctx.num_threads)
+        issues = search_github_issues(page=1, cookie=cookie, query=query)
+    else:
+        query = build_query(pattern)
+        peer_page = 50
+        params = [[token, peer_page, item, excludes, query] for item in paging(start=1, end=config.pages * 10, peer_page=peer_page)]
+        results = utils.multi_thread_run(func=search_github_code_byapi, tasks=params, num_threads=ctx.num_threads)
+        issues = search_github_issues_byapi(peer_page=5, page=1, query=query)
+
+    links = list(set(itertools.chain.from_iterable(results)))
+    return links + list(issues)
+
+
 def crawl_github(config: GithubConfig, ctx: CrawlContext) -> ChannelResult:
     cookie = os.environ.get("GH_COOKIE", "").strip()
     token = os.environ.get("GH_TOKEN", "").strip()
@@ -172,27 +193,11 @@ def crawl_github(config: GithubConfig, ctx: CrawlContext) -> ChannelResult:
 
     links, starttime = [], time.time()
     method = "search on the page" if utils.isblank(token) else "rest api"
-    excludes = config.exclude_repos or []
     patterns = [tuple(p.split()) for p in (config.patterns or []) if utils.trim(p)] or DEFAULT_PATTERNS
     logger.info(f"[GithubCrawl] search patterns: {len(patterns)}, pages per pattern: {config.pages}")
 
-    if utils.isblank(token):
-        for pattern in patterns:
-            query = build_query(pattern, regex=True)
-            pages = list(range(1, config.pages + 1))
-            params = [[item, cookie, excludes, query] for item in pages]
-            results = utils.multi_thread_run(func=search_github_code, tasks=params, num_threads=ctx.num_threads)
-            links.extend(list(set(itertools.chain.from_iterable(results))))
-            links.extend(search_github_issues(page=1, cookie=cookie, query=query))
-    else:
-        peer_page, count = 50, 10
-        pages = paging(start=1, end=config.pages * count, peer_page=peer_page)
-        for pattern in patterns:
-            query = build_query(pattern)
-            params = [[token, peer_page, item, excludes, query] for item in pages]
-            results = utils.multi_thread_run(func=search_github_code_byapi, tasks=params, num_threads=ctx.num_threads)
-            links.extend(list(set(itertools.chain.from_iterable(results))))
-            links.extend(search_github_issues_byapi(peer_page=5, page=1, query=query))
+    for pattern in patterns:
+        links.extend(_search_by_pattern(pattern=pattern, config=config, ctx=ctx, token=token, cookie=cookie))
 
     page = PageChannel(
         include="",
