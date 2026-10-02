@@ -54,7 +54,8 @@ def _telegram_pages(channel: str, config: TelegramChannelConfig, pages: int) -> 
 
     count = get_telegram_pages(channel=channel)
     if count == 0:
-        return []
+        # 频道首页 canonical 链接通常不带 ?before= 参数, 此时回退到抓取第一页
+        return [[f"https://t.me/s/{channel}", config]]
 
     arrays = range(count, -1, -100)
     pages = min(pages, len(arrays))

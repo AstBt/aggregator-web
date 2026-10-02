@@ -131,7 +131,7 @@
         "proxy": {
             "enable": false,
             "address": "http://127.0.0.1:7897",
-            "test_url": "http://www.google.com/generate_204"
+            "test_url": "https://www.google.com/"
         }
     },
     "groups": {

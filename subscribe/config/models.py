@@ -877,7 +877,7 @@ class ProxyConfig:
 
     enable: bool = False
     address: str = ""
-    test_url: str = "http://www.google.com/generate_204"
+    test_url: str = "https://www.google.com/"
 
     @classmethod
     def parse(cls, node: Node) -> ProxyConfig:
@@ -887,7 +887,7 @@ class ProxyConfig:
         return cls(
             enable=obj.boolean("enable", default=False),
             address=obj.string("address", default="") or "",
-            test_url=obj.string("test_url", default="") or "http://www.google.com/generate_204",
+            test_url=obj.string("test_url", default="") or "https://www.google.com/",
         )
 
     def to_dict(self) -> dict[str, object]:
