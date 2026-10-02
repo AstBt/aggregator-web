@@ -314,10 +314,10 @@
 <!-- ============ HERO ============ -->
 <div class="wrap hero">
   <h1>一条流水线,<br>把散落互联网的<span class="hl">免费代理</span><br>炼成可用的订阅。</h1>
-  <p class="sub">Aggregator 是一个<strong>免费代理池构建工具</strong>:从 Telegram、GitHub、搜索引擎、Twitter、机场网站等渠道自动爬取代理订阅,经 Clash 内核验活、质量过滤、subconverter 格式转换,最终推送为各类客户端可直接订阅的 URL。</p>
+  <p class="sub">Aggregator 是一个<strong>免费代理池构建工具</strong>:从 Telegram 频道、GitHub(代码/Issues/TG/Gist)、公开 Gist 时间线、搜索引擎等渠道自动爬取代理订阅,经 Clash 内核验活、质量过滤、subconverter 格式转换,最终推送为各类客户端可直接订阅的 URL。</p>
   <div class="hero-facts">
-    <div class="fact"><div class="n">2</div><div class="l">程序入口 process.py / collect.py</div></div>
-    <div class="fact"><div class="n">7+</div><div class="l">爬取源(TG/GH/Google/Yandex/Twitter/页面/脚本)</div></div>
+    <div class="fact"><div class="n">1</div><div class="l">程序入口 process.py(配置驱动)</div></div>
+    <div class="fact"><div class="n">7+</div><div class="l">爬取源(TG/GitHub/Gist/Google/Yandex/页面/脚本)</div></div>
     <div class="fact"><div class="n">12+</div><div class="l">支持的代理协议</div></div>
     <div class="fact"><div class="n">6</div><div class="l">存储后端(Gist/PasteGG/Imperial/Pastefy/QBin/本地)</div></div>
   </div>
@@ -355,7 +355,7 @@
 
   <div class="pipe-legend"><i style="background:var(--ink-2)"></i>数据来源<i style="background:var(--accent)"></i>加工环节</div>
   <div class="pipeline">
-    <div class="pipe-node src"><div class="t">① 爬取 Crawl</div><div class="d">TG / GitHub / Google / Yandex / Twitter / 页面 / 脚本 → 提取订阅链接</div></div>
+    <div class="pipe-node src"><div class="t">① 爬取 Crawl</div><div class="d">TG / GitHub / Gist / Google / Yandex / 页面 / 脚本 → 提取订阅链接</div></div>
     <div class="pipe-arrow">→</div>
     <div class="pipe-node mid"><div class="t">② 注册 Airport</div><div class="d">对机场站自动注册账号、领免费套餐、换取订阅(airport.py)</div></div>
     <div class="pipe-arrow">→</div>
@@ -371,46 +371,45 @@
   <table>
     <tr><th>模块文件</th><th>职责</th><th>关键点</th></tr>
     <tr><td><code>subscribe/process.py</code></td><td><strong>完整入口</strong>:加载 JSON 配置,调度整条流水线</td><td>配置驱动,功能全,支持全部存储后端</td></tr>
-    <tr><td><code>subscribe/collect.py</code></td><td><strong>简化入口</strong>:自动发现机场、注册、收集订阅</td><td>命令行参数驱动,结果只推 Gist,适合个人</td></tr>
-    <tr><td><code>subscribe/crawl/</code></td><td>爬虫引擎与各渠道实现</td><td><code>channels/</code> 下每个文件对应一个源;plugins 支持自定义脚本</td></tr>
+    <tr><td><code>subscribe/crawl/</code></td><td>爬虫引擎与各渠道实现</td><td><code>channels/</code> 下每个文件对应一个源:github / gist / telegram / page / script 等;plugins 支持自定义脚本</td></tr>
     <tr><td><code>subscribe/airport.py</code></td><td>机场注册器:注册账号、下单免费套餐、解析订阅</td><td>支持灵活邮箱模式(--flexible)绕过邮箱验证</td></tr>
     <tr><td><code>subscribe/clash.py</code></td><td>生成 Clash 配置 + 内核验活</td><td><code>clash/</code> 内置 Win/mac/Linux 三平台内核与 Country.mmdb</td></tr>
     <tr><td><code>subscribe/subconverter.py</code></td><td>调用 subconverter 做格式转换</td><td><code>subconverter/</code> 内置三平台二进制与全套规则</td></tr>
     <tr><td><code>subscribe/push.py</code></td><td>存储后端抽象(PushTo 基类 + 6 个实现)</td><td>统一 push_to 接口,按 engine 配置路由</td></tr>
     <tr><td><code>subscribe/outbound/</code></td><td>各代理协议的字段校验器</td><td>每协议一个 Verifier,决定节点配置是否合法</td></tr>
     <tr><td><code>subscribe/config/</code></td><td>配置文件解析与数据模型</td><td>把 JSON 映射为 ProcessConfig 等强类型结构</td></tr>
-    <tr><td><code>.github/workflows/</code></td><td>官方定时自动化</td><td>process / collect / refresh / delete / checkin 五套现成工作流</td></tr>
+    <tr><td><code>.github/workflows/</code></td><td>官方定时自动化</td><td>process / refresh / delete / checkin 四套现成工作流</td></tr>
   </table>
   </div>
 
-  <h3><span class="idx">2.2</span>两个入口怎么选</h3>
+  <h3><span class="idx">2.2</span>入口:process.py(唯一)</h3>
   <div class="paths">
     <div class="path rec">
-      <span class="tag">功能完整</span>
+      <span class="tag">唯一入口</span>
       <h4>process.py</h4>
-      <div class="sub2">配置驱动 · 推荐用于长期自动化</div>
+      <div class="sub2">配置驱动 · 全部功能</div>
       <ul>
         <li>需要一份 JSON 配置文件( sites / crawl / groups / storage )</li>
         <li>可配置<strong>所有</strong>爬取源与<strong>所有</strong>存储后端</li>
         <li>支持分组输出、过滤规则、自动注册、续费管理</li>
+        <li>本地代理探活通过后,爬取与验证均优先走代理</li>
         <li>学习成本较高,但可控性最强</li>
       </ul>
     </div>
     <div class="path">
-      <h4>collect.py</h4>
-      <div class="sub2">参数驱动 · 适合个人快速上手</div>
+      <h4>历史上的 collect.py</h4>
+      <div class="sub2">已移除 · 勿再使用</div>
       <ul>
-        <li>无需配置文件,纯命令行参数</li>
-        <li>自动收集机场网站 → 注册 → 拿订阅</li>
-        <li>结果只推送 GitHub Gist</li>
-        <li>两条命令就能跑起来,几分钟出结果</li>
+        <li>早期版本提供「自动发现机场 → 注册 → 收集」的简化入口</li>
+        <li>已随代码重构<strong>完整删除</strong>(发现源失效率高,收益低)</li>
+        <li>机场自动注册能力保留在 process.py 的 <code>sites.domain</code> 字段中,按需使用</li>
       </ul>
     </div>
   </div>
 
   <div class="note">
     <span class="nt">举例 · 选型判断</span>
-    想立刻体验、只关心「有没有免费节点」→ 用 <code>collect.py</code>。想把 Telegram / GitHub 爬到的节点和机场订阅分流到不同分组、存到不同后端、定时自动更新 → 用 <code>process.py</code>。
+    现在只有一条路:写好 <code>crawl</code>(TG 频道列表 + GitHub 多模式 + Gist 扫描)——3-4 步就能让 proxy 池自我维持。
   </div>
 </div>
 </section>
@@ -455,7 +454,7 @@
 <div class="wrap">
   <div class="sec-tag">04 / CONFIGURATION</div>
   <h2>配置详解:填什么、哪些必须填、结果长什么样</h2>
-  <p class="lead">两个入口的配置方式完全不同:<code>collect.py</code> 只需两个环境变量;<code>process.py</code> 的一切都由一份 JSON 配置文件驱动。先理解一条<em>「名字链条」</em>,配置文件就读懂了一半:</p>
+  <p class="lead"><code>process.py</code> 的一切都由一份 JSON 配置文件驱动,配合环境变量提供凭证。先理解一条<em>「名字链条」</em>,配置文件就读懂了一半:</p>
 
   <div class="pipeline">
     <div class="pipe-node src"><div class="t">sites[].push_to</div><div class="d">每个订阅来源声明「我要去哪个分组」</div></div>
@@ -483,10 +482,8 @@
     <tr><th>变量</th><th>必填?</th><th>用于</th><th>说明</th></tr>
     <tr><td><code>PUSH_TOKEN</code></td><td><span class="pill req">process.py 必需</span></td><td>存储推送</td><td>存储服务的访问令牌;engine 为 gist 时即 GitHub PAT(需 gist 权限)</td></tr>
     <tr><td><code>SUBSCRIBE_CONF</code></td><td><span class="pill req">或用 -s 指定</span></td><td>process.py</td><td>配置文件路径或远程 URL;两者给其一即可</td></tr>
-    <tr><td><code>GIST_PAT</code></td><td><span class="pill req">collect.py 必需</span></td><td>collect.py</td><td>GitHub 个人访问令牌(或命令行 <code>-k</code>)</td></tr>
-    <tr><td><code>GIST_LINK</code></td><td><span class="pill req">collect.py 必需</span></td><td>collect.py</td><td>格式 <code>用户名/gist_id</code>(或命令行 <code>-g</code>)</td></tr>
-    <tr><td><code>GH_TOKEN</code> / <code>GH_COOKIE</code></td><td><span class="pill opt">可选 · 强烈推荐</span></td><td>GitHub 爬虫</td><td>没有它 GitHub 搜索很快被限流;PAT 推荐,cookie 是网页登录态</td></tr>
-    <tr><td><code>CUSTOMIZE_LINK</code></td><td><span class="pill opt">可选</span></td><td>collect.py</td><td>自定义机场列表 URL,每行「域名 [优惠码] [邀请码]」</td></tr>
+    <tr><td><code>PUSH_TOKEN</code></td><td><span class="pill req">process.py 必需</span></td><td>两者</td><td>存储服务访问令牌;也可读公开 gist(兼作 GH_TOKEN 兜底)</td></tr>
+    <tr><td><code>GH_TOKEN</code></td><td><span class="pill opt">可选 · 强烈推荐</span></td><td>GitHub/Gist 爬虫</td><td>无 scope 即可读公开 gist 与搜索 API,防限流;也可写进 .env</td></tr>
     <tr><td><code>LOCAL_BASEDIR</code></td><td><span class="pill opt">可选</span></td><td>本地存储</td><td>本地存储引擎的输出根目录,不设则相对项目根</td></tr>
     <tr><td><code>WORKFLOW_MODE</code></td><td><span class="pill opt">可选</span></td><td>process.py</td><td><code>0</code> 爬取+聚合(默认) / <code>1</code> 仅爬取 / <code>2</code> 仅聚合</td></tr>
     <tr><td><code>SKIP_ALIVE_CHECK</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td><code>true</code> 跳过验活,速度换质量</td></tr>
@@ -496,12 +493,12 @@
 
   <h3><span class="idx">4.3</span>支持的平台与爬取源配置(crawl)</h3>
   <div class="grid g2">
-    <div class="card"><h5>Telegram 频道</h5><p><code>telegram.channels</code> 里按频道名配置 include / exclude 关键词与 push_to 分组,靠公共频道网页版翻页爬取,无需 TG 账号。</p></div>
-    <div class="card"><h5>GitHub</h5><p><code>github.push_to</code> 必填;配合 <code>GH_TOKEN</code> 搜索代码与 Issues 中的订阅链接,<code>exclude_repos</code> 可拉黑噪音仓库。</p></div>
+    <div class="card"><h5>Telegram 频道</h5><p><code>telegram.channels</code> 里按频道名配置(支持任意公开频道,频道名即键),每个频道可配 include / exclude 关键词与 push_to 分组,靠公共频道网页版翻页爬取,无需 TG 账号。</p></div>
+    <div class="card"><h5>GitHub</h5><p><code>github.push_to</code> 必填;内置 3 组搜索模式(v2board 精确 / 泛化 token / sspanel 短链),代码 + Issues 双通道;<code>patterns</code> 可自定义扩展。配合 <code>GH_TOKEN</code> 防限流。</p></div>
+    <div class="card"><h5>Gist 公开时间线</h5><p>GitHub 无 Gist 搜索 API,本源扫描 <code>/gists/public</code> 最近公开 Gist,从文件内容提取订阅;<code>GH_TOKEN</code> 或 <code>PUSH_TOKEN</code> 都能读,无需额外权限。</p></div>
     <div class="card"><h5>Google / Yandex 搜索</h5><p>默认关闭,设 <code>"enable": true</code> 打开;适合补充冷门源,但验证码风险高,建议给 <code>exclude_sites</code> 拉黑名单。</p></div>
-    <div class="card"><h5>Twitter 用户</h5><p><code>twitter.users</code> 按用户名配置,爬时间线中带 <code>vmess:// ss:// trojan://</code> 等链接的推文。</p></div>
-    <div class="card"><h5>自定义页面 pages</h5><p>直接给 URL,支持 <code>{page}</code> 占位符批量翻页(<code>start</code>/<code>end</code>);是最简单可靠的源。</p></div>
-    <div class="card"><h5>脚本插件 scripts</h5><p>指定 <code>"plugin": "名字"</code>,执行 <code>crawl/scripts</code> 下你自写的 Python 插件,任何「要登录 / 要签名」的站点都能接。</p></div>
+    <div class="card"><h5>本地代理 proxy</h5><p>探活通过后置入 <code>HTTP(S)_PROXY</code>,<strong>所有</strong>爬取(GitHub/Gist/TG/页面)与订阅验证均优先走代理;订阅验证直连失败也会再走一次代理复验。</p></div>
+    <div class="card"><h5>自定义页面 / 脚本插件</h5><p>pages 支持 <code>{page}</code> 占位符批量翻页;scripts 指定 <code>plugin</code> 执行自写 Python 插件,任何「要登录 / 要签名」的站点都能接。</p></div>
   </div>
 
   <h3><span class="idx">4.4</span>sites 站点配置要点</h3>
@@ -546,7 +543,7 @@
     <li style="margin-bottom:8px"><strong>每个「分组 × 格式」一个文件</strong>:如 <code>premium-clash</code> 产出 Clash YAML、<code>free-v2ray</code> 产出 Base64 订阅文本、<code>singbox</code> 产出 JSON。</li>
     <li style="margin-bottom:8px"><strong>云端后端 → 订阅 URL</strong>:推送到 Gist 后,该文件的 <em>raw URL</em> 就是订阅地址,直接填进 Clash / V2RayN / Shadowrocket 等客户端。</li>
     <li style="margin-bottom:8px"><strong>本地后端 → 文件树</strong>:<code>&lt;LOCAL_BASEDIR&gt;/&lt;folder_id&gt;/&lt;file_id&gt;</code>,如 <code>output/premium/clash.yaml</code>。</li>
-    <li><strong>附加持久化</strong>:<code>crawl.persist</code> 指定的存储项(默认 <code>crawledsubs</code> / <code>crawledproxies</code>)会保存爬到的订阅链接与节点快照 JSON,供下次增量复用。</li>
+    <li><strong>附加持久化</strong>:<code>crawl.persist</code> 指定的存储项(默认 <code>crawledsubs</code> / <code>crawledproxies</code>)保存订阅池与节点快照 JSON,供下次增量复用;其中 <strong>订阅池只回写验活后确认产出过存活节点的订阅</strong>。</li>
   </ul>
 </div>
 </section>
@@ -556,41 +553,9 @@
 <div class="wrap">
   <div class="sec-tag">05 / HOW-TO</div>
   <h2>最佳实践:一步一步跑通</h2>
-  <p class="lead">下面给出两条路线:<strong>快速路线(collect.py)</strong>十分钟见效;<strong>完整路线(process.py)</strong>一步到位搭起可持续自动更新的代理池。步骤里标注了每一步「为什么」。</p>
+  <p class="lead">项目现在只有 <strong>process.py</strong> 一个入口。按下面 8 步操作,一次搭好可持续自动更新的代理池。每一步都标注了「为什么」。</p>
 
-  <h3><span class="idx">5.1</span>路线一 · collect.py 快速收集(个人尝鲜)</h3>
-
-  <div class="step"><div class="no">1</div><div>
-    <h4>准备环境</h4>
-    <div class="code"><span class="cap">需要 Python ≥ 3.10</span>git clone https://github.com/wzdnzd/aggregator.git
-cd aggregator
-pip install -r requirements.txt</div>
-    <div class="why"><b>为什么</b> requirements 只装 5 个包(PyYAML、tqdm、geoip2 等),Clash 和 subconverter 的二进制已在仓库里,无需额外下载。</div>
-  </div></div>
-
-  <div class="step"><div class="no">2</div><div>
-    <h4>拿到 GitHub 令牌和 Gist</h4>
-    <p>访问 <code>github.com/settings/tokens</code> 生成 classic Token,勾选 <code>gist</code> 权限;再到 <code>gist.github.com</code> 随便建一个 Gist,从地址栏取 ID:<code>gist.github.com/用户名/【这一段是 ID】</code>。</p>
-    <div class="why"><b>为什么</b> 令牌是「你有权写入 Gist」的凭证;Gist 是免费、无限量、能生成 raw URL 的存储,是官方推荐后端。</div>
-  </div></div>
-
-  <div class="step"><div class="no">3</div><div>
-    <h4>运行收集</h4>
-    <div class="code"><span class="cap">自动收集机场 → 注册 → 验活 → 转 3 种格式 → 上传 Gist</span>python subscribe/collect.py \
-  -g <span class="a">你的用户名/你的gist_id</span> \
-  -k <span class="a">ghp_你的令牌</span> \
-  -t clash v2ray singbox \
-  -f 50 -l 168 -d 5000</div>
-    <div class="why"><b>为什么</b> <code>-t</code> 指定输出格式;<code>-f 50</code> 只留剩余流量 ≥50GB 的套餐;<code>-l 168</code> 只留剩余时间 ≥7 天的;<code>-d 5000</code> 丢弃延迟高于 5 秒的节点——这三个参数决定拿到手的节点质量。</div>
-  </div></div>
-
-  <div class="step"><div class="no">4</div><div>
-    <h4>在客户端订阅</h4>
-    <p>打开你的 Gist 页面,找到生成的 <code>.yaml</code> / <code>.txt</code> 文件,点 <em>Raw</em> 拿到原始 URL,填入 Clash Verge / V2RayN / Shadowrocket 的订阅管理即可。</p>
-    <div class="why"><b>为什么</b> 客户端订阅的是 raw URL 而非网页地址——raw URL 返回纯文本本体,客户端才能解析。</div>
-  </div></div>
-
-  <h3><span class="idx">5.2</span>路线二 · process.py 完整流水线(长期自动化)</h3>
+  <h3><span class="idx">5.1</span>标准实践 · process.py 完整流水线(长期自动化)</h3>
 
   <div class="step"><div class="no">1</div><div>
     <h4>复制默认配置作为起点</h4>
@@ -613,14 +578,17 @@ pip install -r requirements.txt</div>
 
   <div class="step"><div class="no">3</div><div>
     <h4>配 crawl:打开你想要的爬取源</h4>
-    <div class="code"><span class="cap">第一次建议只开 Telegram + GitHub,稳定后再加</span><span class="k">"crawl"</span>: {
+    <div class="code"><span class="cap">四路源:TG 频道 + GitHub 多模式 + Gist 扫描 + 本地代理</span><span class="k">"crawl"</span>: {
   <span class="k">"enable"</span>: <span class="a">true</span>,
-  <span class="k">"telegram"</span>: { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"pages"</span>: <span class="v">3</span>,
-    <span class="k">"channels"</span>: { <span class="v">"某代理频道"</span>: { <span class="k">"push_to"</span>: [<span class="a">"free"</span>] } } },
-  <span class="k">"github"</span>:   { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"push_to"</span>: [<span class="a">"free"</span>] },
+  <span class="k">"proxy"</span>: { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"address"</span>: <span class="a">"http://127.0.0.1:7897"</span> },
+  <span class="k">"telegram"</span>: { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"pages"</span>: <span class="v">5</span>,
+    <span class="k">"channels"</span>: { <span class="v">"oneclickvpnkeys"</span>: { <span class="k">"push_to"</span>: [<span class="a">"free"</span>] },
+                     <span class="v">"VmessProtocol"</span>: { <span class="k">"push_to"</span>: [<span class="a">"free"</span>] } } },
+  <span class="k">"github"</span>:   { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"push_to"</span>: [<span class="a">"free"</span>] },  <span class="c">// 内置3组搜索模式, patterns 可扩展</span>
+  <span class="k">"gist"</span>:     { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"push_to"</span>: [<span class="a">"free"</span>], <span class="k">"max_gists"</span>: <span class="v">100</span> },
   <span class="k">"google"</span>:   { <span class="k">"enable"</span>: <span class="a">false</span> }
 }</div>
-    <div class="why"><b>为什么</b> Google / Yandex 爬虫容易被验证码卡住,首跑就全开只会收获一屏报错;TG + GitHub 是产出最稳的两路。记得导出 <code>GH_TOKEN</code> 防 GitHub 限流。</div>
+    <div class="why"><b>为什么</b> Google / Yandex 爬虫容易被验证码卡住,首跑就全开只会收获一屏报错;TG + GitHub + Gist 是产出最稳的三路,proxy 启用后它们全部优先走本地代理。记得导出 <code>GH_TOKEN</code> 防限流。</div>
   </div></div>
 
   <div class="step"><div class="no">4</div><div>
@@ -694,7 +662,7 @@ GH_TOKEN        = ghp_xxx           <span class="c"># 可选,提升爬虫额度<
 <footer>
   <div class="wrap">
     <div>Aggregator 项目完全指南 · 基于仓库 README 与源码梳理 · 生成于 2026-10-02</div>
-    <div>入口:<code>subscribe/process.py</code> · <code>subscribe/collect.py</code> · 模板:<code>subscribe/examples/config.default.json</code></div>
+    <div>入口:<code>subscribe/process.py</code> · 模板:<code>subscribe/examples/config.default.json</code> · 凭证:<code>.env</code>(已被 gitignore 排除)</div>
   </div>
 </footer>
 

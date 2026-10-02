@@ -19,7 +19,7 @@ graph TB
         D --> F[爬虫模块]
         F --> G[多源爬虫实现]
         G --> I[GitHub 爬虫]
-        G --> L[Twitter 爬虫]
+        G --> L[Gist 爬虫]
         G --> J[Google 爬虫]
         G --> K[Yandex 爬虫]
     end
@@ -105,7 +105,6 @@ flowchart TD
         A2[GitHub 仓库<br/>代码和Issues搜索]
         A3[搜索引擎<br/>Google/Yandex检索]
         A4[机场网站<br/>自动注册获取]
-        A5[Twitter 用户<br/>时间线爬取]
         A6[通用网页<br/>指定URL爬取]
         A7[脚本插件<br/>自定义逻辑]
     end
@@ -124,7 +123,6 @@ flowchart TD
     A2 --> B1
     A3 --> B1
     A4 --> B1
-    A5 --> B1
     A6 --> B1
     A7 --> B1
     
@@ -152,11 +150,10 @@ classDiagram
         +crawl_github() GitHub爬虫
         +crawl_google() Google爬虫
         +crawl_yandex() Yandex爬虫
-        +crawl_twitter() Twitter爬虫
+        +crawl_gist() Gist爬虫
         +crawl_pages() 页面爬虫
         +extract_subscribes() 提取订阅
         +validate() 验证订阅
-        +collect_airport() 收集机场
     }
     
     class AirportModule {
@@ -359,93 +356,6 @@ LOCAL_BASEDIR=/path/to/output           # 本地存储基础目录
 
 ---
 
-#### collect.py - 简化收集版本
-
-**功能特点**：
-- 自动收集机场网站
-- 简化的命令行操作
-- 直接上传到 GitHub Gist
-- 适合个人快速使用
-
-**使用方法**：
-```bash
-python subscribe/collect.py [选项]
-```
-
-**主要参数**：
-```bash
--g, --gist USER/GIST_ID     # GitHub Gist 信息（必需）
--k, --key TOKEN             # GitHub 个人访问令牌（必需）
--t, --targets FORMAT...     # 输出格式（默认：clash,v2ray,singbox）
--n, --num THREADS           # 线程数（默认：64）
--p, --pages COUNT           # 爬取页数（默认：无限制）
--f, --flow GB               # 最小剩余流量（GB）
--l, --life HOURS            # 最小剩余时间（小时）
--d, --delay MS              # 最大延迟（默认：5000ms）
--o, --overwrite             # 覆盖域名列表
--r, --refresh               # 仅刷新现有订阅
--s, --skip                  # 跳过可用性检查
--c, --skip-captcha                 # 丢弃需要人机验证的站点
--e, --easygoing             # 宽松注册模式
--a, --all                   # 生成完整 Clash 配置
--v, --ignore-default-filters               # 忽略默认过滤规则
--i, --invisible             # 隐藏进度条
--y, --custom-sites URL          # 自定义机场列表URL
--u, --url URL               # 测试URL
-```
-
-**使用示例**：
-```bash
-# 基本收集
-python subscribe/collect.py -g username/gist_id -k your_token
-
-# 指定输出格式
-python subscribe/collect.py -g username/gist_id -k your_token -t clash v2ray
-
-# 高质量过滤
-python subscribe/collect.py -g username/gist_id -k your_token -f 50 -l 168
-
-# 快速模式（跳过检查）
-python subscribe/collect.py -g username/gist_id -k your_token --skip
-
-# 仅刷新现有订阅
-python subscribe/collect.py -g username/gist_id -k your_token --refresh
-
-# 使用自定义机场列表
-python subscribe/collect.py -g username/gist_id -k your_token -y https://example.com/list.txt
-```
-
-**collect.py 专用环境变量**：
-```bash
-# 核心配置（必需）
-GIST_PAT=your_github_token              # GitHub 个人访问令牌
-GIST_LINK=username/gist_id              # 默认 Gist 信息
-
-# 可选配置
-CUSTOMIZE_LINK=https://example.com      # 自定义机场列表URL
-```
-
-**输出格式支持**：
-- `clash` - Clash 配置文件
-- `v2ray` - V2Ray 订阅链接
-- `singbox` - SingBox 配置文件
-- `mixed` - 混合格式
-- 其他 subconverter 支持的格式
-
----
-
-#### 两种方式对比
-
-| 特性       | process.py         | collect.py         |
-| ---------- | ------------------ | ------------------ |
-| 配置复杂度 | 高（需要配置文件） | 低（命令行参数）   |
-| 功能完整性 | 完整               | 基础               |
-| 自定义程度 | 高                 | 中等               |
-| 学习成本   | 高                 | 低                 |
-| 适用场景   | 复杂需求、定制化   | 个人使用、快速收集 |
-| 存储后端   | 支持所有           | 仅 GitHub Gist     |
-| 爬取源     | 可配置所有源       | 自动收集机场       |
-
 ## 配置详解
 
 配置文件是 `process.py` 的核心，位于 `subscribe/examples/config.default.json`。
@@ -586,6 +496,28 @@ CUSTOMIZE_LINK=https://example.com      # 自定义机场列表URL
 }
 ```
 
+
+#### 2.1.1 本地代理 (proxy)
+
+本地代理使能后,启动时先探测代理可用性:探活通过则**所有 HTTP 爬取(GitHub/Gist/Telegram/页面)与订阅验证均优先走本地代理**;探活失败则自动回退直连,订阅验证直连失败时也会再走一次代理重试。
+
+| 配置项   | 类型    | 必需性 | 默认值 | 说明 |
+| -------- | ------- | ------ | ------ | ---- |
+| `enable`   | boolean | 可选   | `false` | 是否启用本地代理 |
+| `address`  | string  | 条件   | `""`    | 本地代理地址, 如 `http://127.0.0.1:7897` |
+| `test_url` | string  | 可选   | `https://api.github.com/zen` | 探活 URL, 必须返回 HTTP 200 |
+
+**示例配置**：
+```json
+{
+    "proxy": {
+        "enable": true,
+        "address": "http://127.0.0.1:7897",
+        "test_url": "https://api.github.com/zen"
+    }
+}
+```
+
 #### 2.2 Telegram 爬虫
 
 从 Telegram 公共频道爬取订阅链接。
@@ -648,10 +580,16 @@ CUSTOMIZE_LINK=https://example.com      # 自定义机场列表URL
 | 配置项    | 类型    | 必需性 | 默认值 | 说明                 |
 | --------- | ------- | ------ | ------ | -------------------- |
 | `enable`  | boolean | 可选   | `true` | 是否启用 GitHub 爬虫 |
-| `pages`   | number  | 可选   | `2`    | 搜索结果页数         |
+| `pages`   | number  | 可选   | `2`    | 每种模式的结果页数   |
 | `push_to` | array   | 必需   | `[]`   | 推送到的分组列表     |
 | `exclude` | string  | 可选   | `""`   | 排除规则             |
 | `exclude_repos`   | array   | 可选   | `[]`   | 排除的仓库名称列表   |
+| `patterns` | array  | 可选   | `[]`   | 自定义搜索模式(词组之间空格分隔, AND 组合);留空使用内置 3 组 |
+
+**内置搜索模式**(可按 `patterns` 覆盖)：
+1. `/api/v1/client/subscribe?token=` — v2board 面板订阅(精确)
+2. `subscribe?token=` — 其他路径的带 token 订阅(泛化)
+3. `/link/` + `?sub=1` — sspanel / Sub-Store 风格短链订阅
 
 **环境变量**：
 ```bash
@@ -720,36 +658,37 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 }
 ```
 
-#### 2.5 Twitter 爬虫
+#### 2.6 Gist 爬虫
 
-从 Twitter 用户时间线爬取代理链接。
+扫描最近的公开 Gist, 从文件内容中提取订阅链接。GitHub 没有 Gist 搜索 API, 因此采用公开时间线(`GET /gists/public`)方式发现。
 
 **全局配置**：
 
-| 配置项   | 类型    | 必需性 | 默认值 | 说明                  |
-| -------- | ------- | ------ | ------ | --------------------- |
-| `enable` | boolean | 可选   | `true` | 是否启用 Twitter 爬虫 |
+| 配置项          | 类型   | 必需性 | 默认值     | 说明                          |
+| --------------- | ------ | ------ | ---------- | ----------------------------- |
+| `enable`        | boolean| 可选   | `false`    | 是否启用 Gist 爬虫            |
+| `push_to`       | array  | 必需   | `[]`       | 推送到的分组列表              |
+| `include`       | string | 可选   | `""`       | 包含规则(正则)                |
+| `exclude`       | string | 可选   | `""`       | 排除规则(正则)                |
+| `exclude_owners`| array  | 可选   | `[]`       | 排除的 Gist 作者(regex 列表)  |
+| `max_gists`     | number | 可选   | `100`      | 每次扫描的 Gist 数量(1-5000)  |
+| `max_filesize`  | number | 可选   | `65536`    | 单个文件大小上限(字节)        |
 
-**用户配置 (users)**：
-
+**示例配置**：
 ```json
 {
-    "users": {
-        "用户名": {
-            "enable": true,              // 是否启用此用户
-            "tweets": 30,                // 检查的推文数量
-            "include": "proxy|vpn|节点", // 包含关键词
-            "exclude": "广告|付费",      // 排除关键词
-            "task": {                    // 用户专用任务参数
-                "rename": "🐦 Twitter-{name}"
-            },
-            "push_to": ["free"]         // 推送到的分组
-        }
+    "gist": {
+        "enable": true,
+        "push_to": ["free"],
+        "exclude_owners": ["spamer"],
+        "max_gists": 200
     }
 }
 ```
 
-#### 2.6 仓库爬虫 (repositories)
+> **Token 权限**:读取公开 Gist 内容使用 `GH_TOKEN` 或 `PUSH_TOKEN` 均可,不需要额外 scope;若以后需要网页版 Gist 搜索, 才需要 `GH_COOKIE` 登录态。
+
+#### 2.7 仓库爬虫 (repositories)
 
 从指定 GitHub 仓库的提交记录中爬取。
 
@@ -778,7 +717,7 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 }
 ```
 
-#### 2.7 自定义页面爬虫 (pages)
+#### 2.8 自定义页面爬虫 (pages)
 
 从指定网页爬取代理链接。
 
@@ -828,7 +767,7 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 }
 ```
 
-#### 2.8 脚本爬虫 (scripts) - 插件系统
+#### 2.9 脚本爬虫 (scripts) - 插件系统
 
 通过自定义 Python 脚本扩展爬取功能。
 
@@ -1217,52 +1156,14 @@ python subscribe/process.py \
 - `-o, --overwrite`: 排除之前运行的剩余代理
 - `-i, --invisible`: 隐藏进度指示器
 
-#### 收集模块 (`collect.py`)
-用于收集和管理机场订阅的简化工具：
-
-#### 使用流程
-```mermaid
-flowchart TD
-    A[开始收集] --> B{存在订阅?}
-    B -->|是| C[加载并验证现有订阅]
-    B -->|否| D[重新开始]
-    C --> E[检查过期]
-    D --> F[爬取机场列表]
-    E --> G[与新发现合并]
-    F --> G
-    G --> H[注册新账号]
-    H --> I[验证所有订阅]
-    I --> J[测试代理连通性]
-    J --> K[转换格式]
-    K --> L[上传到存储]
-```
-
-#### 命令行使用
-```bash
-# 基本收集
-python subscribe/collect.py -g username/gist-id -k your-token
-
-# 高级选项
-python subscribe/collect.py \
-    -g username/gist-id \
-    -k your-token \
-    -t clash v2ray singbox \  # 输出格式
-    -n 32 \                   # 线程数
-    -p 10 \                   # 最大爬取页数
-    -f 50 \                   # 最小剩余流量（GB）
-    -l 168 \                  # 最小剩余时间（小时）
-    --overwrite \             # 覆盖域名列表
-    --refresh                 # 仅刷新现有订阅
-```
-
 #### 爬虫模块 (`crawl.py`)
 处理多源爬取和订阅验证：
 
 #### 爬取源
-1. **Telegram 频道**: 爬取公共 Telegram 频道的订阅链接
-2. **GitHub**: 在代码和问题中搜索订阅 URL
-3. **Google/Yandex**: 搜索引擎爬取订阅模式
-4. **Twitter**: 爬取用户时间线的代理链接
+1. **Telegram 频道**: 按配置的频道列表, 抓取公开频道的订阅链接与单节点
+2. **GitHub**: 内置多模式搜索(v2board / 泛化 token / sspanel 短链), 代码与 Issues 双通道
+3. **Gist**: 扫描最近公开 Gist, 从文件内容中提取订阅
+4. **Google/Yandex**: 搜索引擎爬取订阅模式
 5. **自定义页面**: 使用自定义模式直接爬取页面
 6. **脚本**: 专门爬取的自定义插件系统
 
@@ -1357,15 +1258,6 @@ export WORKFLOW_MODE=1
 
 # 仅运行爬取
 python subscribe/process.py -s config.json
-```
-
-**场景 2: 自定义机场收集**
-```bash
-# 从自定义源收集
-python subscribe/collect.py \
-    -y https://your-airport-list.com \
-    -g username/gist-id \
-    -k your-token
 ```
 
 **场景 3: 定时自动化**
