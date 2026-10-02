@@ -22,30 +22,40 @@
                 "oneclickvpnkeys": {
                     "include": "",
                     "exclude": "",
-                    "task": { "rename": "" },
-                    "push_to": ["free"]
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
                 },
                 "VmessProtocol": {
                     "include": "",
                     "exclude": "",
-                    "task": { "rename": "" },
-                    "push_to": ["free"]
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": [
+                        "free"
+                    ]
                 }
             }
         },
         "github": {
             "enable": true,
             "pages": 2,
-            "push_to": ["free"],
+            "push_to": [
+                "free"
+            ],
             "exclude": "",
             "exclude_repos": []
         },
-        "twitter": {
-            "enable": false,
-            "users": {}
+        "google": {
+            "enable": false
         },
-        "google": { "enable": false },
-        "yandex": { "enable": false }
+        "yandex": {
+            "enable": false
+        }
     },
     "groups": {
         "free": {

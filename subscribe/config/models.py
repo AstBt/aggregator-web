@@ -400,33 +400,6 @@ class TelegramChannelConfig(SourceRule):
 
 
 @dataclass
-class TwitterUserConfig(SourceRule):
-    tweets: int = 10
-    enable: bool = True
-
-    @classmethod
-    def parse(cls, node: Node) -> TwitterUserConfig:
-        obj = node.object()
-        payload = _parse_source_rule(obj)
-        payload["tweets"] = obj.integer("tweets", default=10, minimum=1, maximum=100) or 10
-        payload["enable"] = obj.boolean("enable", default=True)
-        return cls(**payload)
-
-    def to_dict(self) -> dict[str, object]:
-        payload = {
-            "enable": self.enable,
-            "tweets": self.tweets,
-            "include": self.include,
-            "exclude": self.exclude,
-            "push_to": list(self.push_to),
-        }
-        task = self.task.to_dict()
-        if task:
-            payload["task"] = task
-        return payload
-
-
-@dataclass
 class PageJob(SourceRule):
     url: str | list[str] = ""
     enable: bool = True
@@ -660,33 +633,6 @@ class TelegramConfig:
             "pages": self.pages,
             "exclude": self.exclude,
             "channels": {name: item.to_dict() for name, item in self.channels.items()},
-        }
-
-
-@dataclass
-class TwitterConfig:
-    enable: bool = True
-    users: dict[str, TwitterUserConfig] = field(default_factory=dict)
-
-    @classmethod
-    def parse(cls, node: Node) -> TwitterConfig | None:
-        if node.absent:
-            return None
-        obj = node.object()
-        users = {}
-        if obj.has("users"):
-            mapping = obj.field("users").object()
-            for name in mapping.keys():
-                key = utils.trim(str(name))
-                if not key:
-                    continue
-                users[key] = TwitterUserConfig.parse(mapping.field(name))
-        return cls(enable=obj.boolean("enable", default=True), users=users)
-
-    def to_dict(self) -> dict[str, object]:
-        return {
-            "enable": self.enable,
-            "users": {name: item.to_dict() for name, item in self.users.items()},
         }
 
 
@@ -933,7 +879,6 @@ class CrawlConfig:
     google: GoogleConfig | None = None
     yandex: YandexConfig | None = None
     telegram: TelegramConfig | None = None
-    twitter: TwitterConfig | None = None
     github: GithubConfig | None = None
     repositories: list[RepoConfig] | None = None
     pages: list[PageJob] | None = None
@@ -963,7 +908,6 @@ class CrawlConfig:
             google=GoogleConfig.parse(obj.field("google")),
             yandex=YandexConfig.parse(obj.field("yandex")),
             telegram=TelegramConfig.parse(obj.field("telegram")),
-            twitter=TwitterConfig.parse(obj.field("twitter")),
             github=GithubConfig.parse(obj.field("github")),
             repositories=repositories,
             pages=pages,
@@ -985,8 +929,6 @@ class CrawlConfig:
             payload["yandex"] = self.yandex.to_dict()
         if self.telegram is not None:
             payload["telegram"] = self.telegram.to_dict()
-        if self.twitter is not None:
-            payload["twitter"] = self.twitter.to_dict()
         if self.github is not None:
             payload["github"] = self.github.to_dict()
         if self.repositories is not None:

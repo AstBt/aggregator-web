@@ -20,7 +20,6 @@ from config.models import (
     StorageItem,
     TaskParams,
     TelegramConfig,
-    TwitterConfig,
     UpdateConfig,
     YandexConfig,
 )
@@ -45,7 +44,6 @@ __all__ = [
     "StorageItem",
     "TaskParams",
     "TelegramConfig",
-    "TwitterConfig",
     "UpdateConfig",
     "YandexConfig",
 ]

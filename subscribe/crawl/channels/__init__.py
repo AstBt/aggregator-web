@@ -11,7 +11,6 @@ for _name in (
     "repository",
     "script",
     "telegram",
-    "twitter",
     "yandex",
 ):
     import_module(f"{__name__}.{_name}")

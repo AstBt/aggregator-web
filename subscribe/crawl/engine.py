@@ -156,7 +156,6 @@ def run(
             ("google", config.google),
             ("yandex", config.yandex),
             ("telegram", config.telegram),
-            ("twitter", config.twitter),
             ("github", config.github),
             ("repositories", config.repositories),
             ("pages", config.pages),
