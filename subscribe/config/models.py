@@ -532,6 +532,48 @@ class YandexConfig:
 
 
 @dataclass
+class GistConfig:
+    """GitHub Gist 源:扫描公开 gist 时间线,从内容中提取订阅链接"""
+
+    enable: bool = False
+    push_to: list[str] = field(default_factory=list)
+    exclude: str = ""
+    exclude_owners: list[str] = field(default_factory=list)
+    max_gists: int = 100
+    max_filesize: int = 65536
+
+    @classmethod
+    def parse(cls, node: Node) -> GistConfig | None:
+        if node.absent:
+            return None
+        obj = node.object()
+        owners = obj.string_list("exclude_owners")
+        for index, pattern in enumerate(owners):
+            try:
+                re.compile(pattern)
+            except re.error as exc:
+                obj.field("exclude_owners").fail(f"[{index}] is not a valid regex: {exc}")
+        return cls(
+            enable=obj.boolean("enable", default=False),
+            push_to=obj.string_list("push_to"),
+            exclude=obj.regex("exclude", default=""),
+            exclude_owners=owners,
+            max_gists=obj.integer("max_gists", default=100, minimum=1, maximum=5000) or 100,
+            max_filesize=obj.integer("max_filesize", default=65536, minimum=1024) or 65536,
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {
+            "enable": self.enable,
+            "push_to": list(self.push_to),
+            "exclude": self.exclude,
+            "exclude_owners": list(self.exclude_owners),
+            "max_gists": self.max_gists,
+            "max_filesize": self.max_filesize,
+        }
+
+
+@dataclass
 class GithubConfig:
     enable: bool = True
     pages: int = 1
@@ -877,7 +919,7 @@ class ProxyConfig:
 
     enable: bool = False
     address: str = ""
-    test_url: str = "https://www.google.com/"
+    test_url: str = "https://api.github.com/zen"
 
     @classmethod
     def parse(cls, node: Node) -> ProxyConfig:
@@ -887,7 +929,7 @@ class ProxyConfig:
         return cls(
             enable=obj.boolean("enable", default=False),
             address=obj.string("address", default="") or "",
-            test_url=obj.string("test_url", default="") or "https://www.google.com/",
+            test_url=obj.string("test_url", default="") or "https://api.github.com/zen",
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -907,6 +949,7 @@ class CrawlConfig:
     yandex: YandexConfig | None = None
     telegram: TelegramConfig | None = None
     github: GithubConfig | None = None
+    gist: GistConfig | None = None
     repositories: list[RepoConfig] | None = None
     pages: list[PageJob] | None = None
     scripts: list[ScriptJob] | None = None
@@ -937,6 +980,7 @@ class CrawlConfig:
             yandex=YandexConfig.parse(obj.field("yandex")),
             telegram=TelegramConfig.parse(obj.field("telegram")),
             github=GithubConfig.parse(obj.field("github")),
+            gist=GistConfig.parse(obj.field("gist")),
             repositories=repositories,
             pages=pages,
             scripts=scripts,
@@ -959,6 +1003,8 @@ class CrawlConfig:
             payload["telegram"] = self.telegram.to_dict()
         if self.github is not None:
             payload["github"] = self.github.to_dict()
+        if self.gist is not None:
+            payload["gist"] = self.gist.to_dict()
         if self.repositories is not None:
             payload["repositories"] = [item.to_dict() for item in self.repositories]
         if self.pages is not None:

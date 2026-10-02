@@ -5,6 +5,7 @@ from importlib import import_module
 from crawl.base import CHANNELS
 
 for _name in (
+    "gist",
     "github",
     "google",
     "page",

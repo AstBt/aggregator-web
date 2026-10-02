@@ -131,7 +131,17 @@
         "proxy": {
             "enable": false,
             "address": "http://127.0.0.1:7897",
-            "test_url": "https://www.google.com/"
+            "test_url": "https://api.github.com/zen"
+        },
+        "gist": {
+            "enable": false,
+            "push_to": [
+                "free"
+            ],
+            "exclude": "",
+            "exclude_owners": [],
+            "max_gists": 100,
+            "max_filesize": 65536
         }
     },
     "groups": {

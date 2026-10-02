@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import os
 import re
 
 import push
@@ -150,12 +151,17 @@ def run(
         display=display,
     )
 
-    # 本地代理验证:启用且代理可达时,订阅直连验证失败会走代理回退
+    # 本地代理:启用且探活通过时,爬取源与订阅验证均优先走本地代理
     if config.proxy.enable and not utils.isblank(config.proxy.address):
         probe = utils.http_get(url=config.proxy.test_url, proxy=config.proxy.address, timeout=6, retry=1)
         if probe:
             ctx.proxy = config.proxy.address
-            logger.info(f"[CrawlInfo] local proxy is available: {config.proxy.address}")
+            # urllib 读取环境变量,置入后所有网络请求(爬虫/验证/推送)均优先经代理
+            os.environ["HTTP_PROXY"] = config.proxy.address
+            os.environ["HTTPS_PROXY"] = config.proxy.address
+            logger.info(
+                f"[CrawlInfo] local proxy is available: {config.proxy.address}, crawling and validation prefer it"
+            )
         else:
             logger.warning(f"[CrawlWarn] local proxy {config.proxy.address} is unreachable, fallback disabled")
 
@@ -166,6 +172,7 @@ def run(
             ("yandex", config.yandex),
             ("telegram", config.telegram),
             ("github", config.github),
+            ("gist", config.gist),
             ("repositories", config.repositories),
             ("pages", config.pages),
             ("scripts", config.scripts),
