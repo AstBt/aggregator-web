@@ -93,6 +93,7 @@ class CrawlContext:
     pushtool: PushTo | None
     num_threads: int = 50
     display: bool = True
+    proxy: str = ""
 
 
 @dataclass

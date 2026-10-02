@@ -197,6 +197,8 @@ def check_status(
     spare_time: float = 0,
     tolerance: float = 0,
     connectable: bool = True,
+    proxy: str = "",
+    use_proxy: bool = False,
 ) -> tuple[bool, bool]:
     """
     url: subscription link
@@ -204,6 +206,8 @@ def check_status(
     remain: minimum remaining traffic flow
     spare_time: minimum remaining time
     tolerance: waiting time after expiration
+    proxy: local proxy address, used as fallback when direct connection fails
+    use_proxy: whether the current attempt is already via proxy
 
     Returns:
         tuple[bool, bool]: (available, expired)
@@ -226,6 +230,14 @@ def check_status(
     try:
         headers = {"User-Agent": f"{utils.USER_AGENT}; Clash.Meta; Mihomo; Shadowrocket;"}
         request = urllib.request.Request(url=url, headers=headers)
+        if use_proxy and not utils.isblank(proxy):
+            host, protocol = "", ""
+            if proxy.startswith("https://"):
+                host, protocol = proxy[8:], "https"
+            elif proxy.startswith("http://"):
+                host, protocol = proxy[7:], "http"
+            if host:
+                request.set_proxy(host=host, type=protocol)
         timeout = max(1.0, min(_VALIDATE_CONNECT_TIMEOUT, remaining))
         response = urllib.request.urlopen(request, timeout=timeout, context=utils.CTX)
         if response.getcode() != 200:
@@ -273,10 +285,24 @@ def check_status(
                 spare_time=spare_time,
                 tolerance=tolerance,
                 connectable=connectable,
+                proxy=proxy,
+                use_proxy=use_proxy,
             )
 
         return False, expired
     except (socket.timeout, TimeoutError, ssl.SSLError, ConnectionError, OSError):
+        # 直连失败且配置了本地代理时,再用代理完整验证一次
+        if proxy and not use_proxy:
+            return check_status(
+                url=url,
+                retry=retry,
+                remain=remain,
+                spare_time=spare_time,
+                tolerance=tolerance,
+                connectable=connectable,
+                proxy=proxy,
+                use_proxy=True,
+            )
         return check_status(
             url=url,
             retry=retry - 1,
@@ -284,6 +310,8 @@ def check_status(
             spare_time=spare_time,
             tolerance=tolerance,
             connectable=connectable,
+            proxy=proxy,
+            use_proxy=use_proxy,
         )
     except Exception as e:
         logger.debug(f"[Validate] unexpected error for {utils.mask(url)}: {e}")

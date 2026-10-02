@@ -150,6 +150,15 @@ def run(
         display=display,
     )
 
+    # 本地代理验证:启用且代理可达时,订阅直连验证失败会走代理回退
+    if config.proxy.enable and not utils.isblank(config.proxy.address):
+        probe = utils.http_get(url=config.proxy.test_url, proxy=config.proxy.address, timeout=6, retry=1)
+        if probe:
+            ctx.proxy = config.proxy.address
+            logger.info(f"[CrawlInfo] local proxy is available: {config.proxy.address}")
+        else:
+            logger.warning(f"[CrawlWarn] local proxy {config.proxy.address} is unreachable, fallback disabled")
+
     result = ChannelResult()
     if mode != 2:
         sections = [
@@ -236,7 +245,7 @@ def run(
         logger.info(f"[CrawlInfo] start to validate {len(pending)} subscriptions")
         masks = utils.multi_thread_run(
             func=check_status,
-            tasks=[[item.url, 2, 5, 12, 72] for item in pending],
+            tasks=[[item.url, 2, 5, 12, 72, ctx.proxy] for item in pending],
             num_threads=ctx.num_threads,
             show_progress=ctx.display,
         )

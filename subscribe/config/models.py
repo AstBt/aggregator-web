@@ -869,6 +869,29 @@ class CrawlPersist:
 
 
 @dataclass
+class ProxyConfig:
+    """本地代理,用于订阅验证的直连失败回退"""
+
+    enable: bool = False
+    address: str = ""
+    test_url: str = "http://www.google.com/generate_204"
+
+    @classmethod
+    def parse(cls, node: Node) -> ProxyConfig:
+        if node.absent:
+            return cls()
+        obj = node.object()
+        return cls(
+            enable=obj.boolean("enable", default=False),
+            address=obj.string("address", default="") or "",
+            test_url=obj.string("test_url", default="") or "http://www.google.com/generate_204",
+        )
+
+    def to_dict(self) -> dict[str, object]:
+        return {"enable": self.enable, "address": self.address, "test_url": self.test_url}
+
+
+@dataclass
 class CrawlConfig:
     enable: bool = True
     exclude: str = ""
@@ -876,6 +899,7 @@ class CrawlConfig:
     include_nodes: bool = True
     persist: CrawlPersist = field(default_factory=CrawlPersist)
     task: TaskParams = field(default_factory=TaskParams)
+    proxy: ProxyConfig = field(default_factory=ProxyConfig)
     google: GoogleConfig | None = None
     yandex: YandexConfig | None = None
     telegram: TelegramConfig | None = None
@@ -905,6 +929,7 @@ class CrawlConfig:
             include_nodes=obj.boolean("include_nodes", default=True),
             persist=CrawlPersist.parse(obj.field("persist"), storage),
             task=TaskParams.parse(obj.field("task")),
+            proxy=ProxyConfig.parse(obj.field("proxy")),
             google=GoogleConfig.parse(obj.field("google")),
             yandex=YandexConfig.parse(obj.field("yandex")),
             telegram=TelegramConfig.parse(obj.field("telegram")),
