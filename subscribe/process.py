@@ -192,7 +192,7 @@ def aggregate(args: argparse.Namespace) -> None:
     logger.info(f"start fetch all subscriptions, count: [{len(tasks)}]")
     results = utils.multi_process_run(func=workflow.executewrapper, tasks=tasks)
 
-    subscribes, datasets = {}, {}
+    subscribes, datasets, alive_subs = {}, {}, set()
     for i in range(len(results)):
         data = results[i]
         if not data or data[0] < 0 or not data[1]:
@@ -233,6 +233,10 @@ def aggregate(args: argparse.Namespace) -> None:
         )
 
         for item in nochecks:
+            # 验活存活的节点, 记录其来源订阅, 用于过滤订阅池
+            sub = item.get("sub")
+            if sub:
+                alive_subs.add(sub)
             item.pop("sub", "")
 
         if len(nochecks) <= 0:
@@ -325,6 +329,9 @@ def aggregate(args: argparse.Namespace) -> None:
         workflow.cleanup(os.path.join(PATH, "subconverter"), [source_file])
         cost = "{:.2f}s".format(time.time() - starttime)
         logger.info(f"group [{k}] process finished, count: {len(nochecks)}, cost: {cost}")
+
+    # 仅保留验活后确认可用的订阅, 回写订阅池
+    workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
 
     workflow.refresh(
         config=process_config,

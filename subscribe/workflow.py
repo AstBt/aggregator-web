@@ -232,6 +232,42 @@ def merge_config(sites: list[SiteConfig]) -> list[SiteConfig]:
     return items
 
 
+def filter_pool(config: ProcessConfig, push: PushTo, alives: set[str]) -> None:
+    """回写订阅池:仅保留本轮验活后确认可用的订阅(与存储渠道无关)
+
+    alives: 本轮验活存活的节点所来自的订阅 URL 集合(取自节点 sub 字段)
+    """
+    if not isinstance(config, ProcessConfig) or not isinstance(push, PushTo):
+        return
+    if not config.crawl:
+        return
+    item = config.storage.items.get(config.crawl.persist.subscribe)
+    if not push.validate(item=item):
+        return
+
+    url = push.raw_url(item=item)
+    content = utils.http_get(url=url)
+    try:
+        data = json.loads(content)
+    except Exception:
+        logger.debug("[UpdateError] parse subscription pool failed, skip filtering")
+        return
+    if not isinstance(data, dict):
+        return
+
+    kept = {}
+    for sub, record in data.items():
+        if sub in alives:
+            record["errors"] = 0
+            kept[sub] = record
+    dropped = len(data) - len(kept)
+
+    if push.push_to(content=json.dumps(kept), item=item, group="crawled-filter"):
+        logger.info(f"[UpdateInfo] subscription pool filtered by liveness: kept={len(kept)}, dropped={dropped}")
+    else:
+        logger.error("[UpdateError] push filtered subscription pool failed")
+
+
 def refresh(
     config: ProcessConfig, push: PushTo, alives: dict[str, bool] | None, filepath: str = "", skip_remark: bool = False
 ) -> None:
