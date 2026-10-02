@@ -72,6 +72,26 @@ def fetch_gist_content(gist: dict, headers: dict[str, str], max_size: int) -> st
     return "\n".join(parts)
 
 
+def _extract_gist(
+    gist: dict, headers: dict[str, str], config: GistConfig, include_nodes: bool
+) -> ChannelResult | None:
+    owner = (gist.get("owner") or {}).get("login", "")
+    if intercept(text=f"{owner}/", excludes=config.exclude_owners):
+        return None
+    content = fetch_gist_content(gist=gist, headers=headers, max_size=config.max_filesize)
+    if not content:
+        return None
+    return extract_subscribes(
+        content=content,
+        push_to=config.push_to,
+        include=config.include,
+        exclude=config.exclude,
+        source=Origin.GIST.name,
+        task=config.task,
+        include_nodes=include_nodes,
+    )
+
+
 def crawl_gist(config: GistConfig, ctx: CrawlContext) -> ChannelResult:
     headers = gist_headers()
     starttime = time.time()
@@ -80,26 +100,11 @@ def crawl_gist(config: GistConfig, ctx: CrawlContext) -> ChannelResult:
         logger.error("[GistCrawl] cannot fetch public gists from github")
         return ChannelResult()
 
-    result = ChannelResult()
-    matched = 0
-    for gist in gists:
-        owner = (gist.get("owner") or {}).get("login", "")
-        slug = f"{owner}/{gist.get('id', '')}"
-        if intercept(text=f"{owner}/", excludes=config.exclude_owners):
-            continue
-        content = fetch_gist_content(gist=gist, headers=headers, max_size=config.max_filesize)
-        if not content:
-            continue
-        single = extract_subscribes(
-            content=content,
-            push_to=config.push_to,
-            include=config.include,
-            exclude=config.exclude,
-            source=Origin.GIST.name,
-            task=config.task,
-            include_nodes=ctx.include_nodes,
-        )
-        if single.items or single.nodes.uris:
+    params = [[gist, headers, config, ctx.include_nodes] for gist in gists]
+    results = utils.multi_thread_run(func=_extract_gist, tasks=params, num_threads=ctx.num_threads)
+    result, matched = ChannelResult(), 0
+    for single in results:
+        if single and (single.items or single.nodes.uris):
             matched += 1
             result.merge(single)
     logger.info(

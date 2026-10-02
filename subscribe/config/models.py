@@ -511,10 +511,12 @@ class GistConfig:
 
     enable: bool = False
     push_to: list[str] = field(default_factory=list)
+    include: str = ""
     exclude: str = ""
     exclude_owners: list[str] = field(default_factory=list)
     max_gists: int = 100
     max_filesize: int = 65536
+    task: TaskParams = field(default_factory=TaskParams)
 
     @classmethod
     def parse(cls, node: Node) -> GistConfig | None:
@@ -530,20 +532,24 @@ class GistConfig:
         return cls(
             enable=obj.boolean("enable", default=False),
             push_to=obj.string_list("push_to"),
+            include=obj.regex("include", default=""),
             exclude=obj.regex("exclude", default=""),
             exclude_owners=owners,
             max_gists=obj.integer("max_gists", default=100, minimum=1, maximum=5000) or 100,
             max_filesize=obj.integer("max_filesize", default=65536, minimum=1024) or 65536,
+            task=TaskParams.parse(obj.field("task")),
         )
 
     def to_dict(self) -> dict[str, object]:
         return {
             "enable": self.enable,
             "push_to": list(self.push_to),
+            "include": self.include,
             "exclude": self.exclude,
             "exclude_owners": list(self.exclude_owners),
             "max_gists": self.max_gists,
             "max_filesize": self.max_filesize,
+            "task": self.task.to_dict(),
         }
 
 
