@@ -538,6 +538,7 @@ class GithubConfig:
     push_to: list[str] = field(default_factory=list)
     exclude: str = ""
     exclude_repos: list[str] = field(default_factory=list)
+    patterns: list[str] = field(default_factory=list)
 
     @classmethod
     def parse(cls, node: Node) -> GithubConfig | None:
@@ -556,6 +557,7 @@ class GithubConfig:
             push_to=obj.string_list("push_to"),
             exclude=obj.regex("exclude", default=""),
             exclude_repos=repos,
+            patterns=obj.string_list("patterns"),
         )
 
     def to_dict(self) -> dict[str, object]:
@@ -565,6 +567,7 @@ class GithubConfig:
             "push_to": list(self.push_to),
             "exclude": self.exclude,
             "exclude_repos": list(self.exclude_repos),
+            "patterns": list(self.patterns),
         }
 
 
