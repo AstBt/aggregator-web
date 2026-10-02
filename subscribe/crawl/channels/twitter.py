@@ -64,10 +64,28 @@ def get_guest_token() -> str:
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
     }
     content = utils.http_get(url="https://twitter.com/", headers=headers)
-    if not content:
+    if content:
+        matcher = re.findall("gt=([0-9]{19})", content, flags=re.I)
+        if matcher:
+            return matcher[0]
+
+    # X 已不再在首页 HTML 中内嵌 guest token,改走官方 guest/activate.json 接口
+    request = urllib.request.Request(
+        url="https://api.twitter.com/1.1/guest/activate.json",
+        headers={
+            "User-Agent": utils.USER_AGENT,
+            "Authorization": "Bearer AAAAAAAAAAAAAAAAAAAAANRILgAAAAAAnNwIzUejRCOuH5E6I8xnZz4puTs%3D1Zv7ttfk8LF81IUq16cHjhLTvJu4FA33AGWWjCpTnA",
+            "Cookie": cookies,
+        },
+        data=b"",
+        method="POST",
+    )
+    try:
+        response = urllib.request.urlopen(request, timeout=10, context=utils.CTX)
+        matcher = re.findall(r'"guest_token"\s*:\s*"([0-9]{19})"', str(response.read(), encoding="utf8"))
+        return matcher[0] if matcher else ""
+    except (urllib.error.URLError, TimeoutError):
         return ""
-    matcher = re.findall("gt=([0-9]{19})", content, flags=re.I)
-    return matcher[0] if matcher else ""
 
 
 def username_to_id(username: str, headers: dict[str, str]) -> str:

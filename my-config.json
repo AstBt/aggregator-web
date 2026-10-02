@@ -1,0 +1,91 @@
+{
+    "sites": [],
+    "crawl": {
+        "enable": true,
+        "exclude": "",
+        "max_fails": 5,
+        "include_nodes": true,
+        "persist": {
+            "subscribe": "crawledsubs",
+            "nodes": "crawledproxies"
+        },
+        "task": {
+            "rename": "",
+            "include": "",
+            "exclude": ""
+        },
+        "telegram": {
+            "enable": true,
+            "pages": 5,
+            "exclude": "",
+            "channels": {
+                "oneclickvpnkeys": {
+                    "include": "",
+                    "exclude": "",
+                    "task": { "rename": "" },
+                    "push_to": ["free"]
+                },
+                "VmessProtocol": {
+                    "include": "",
+                    "exclude": "",
+                    "task": { "rename": "" },
+                    "push_to": ["free"]
+                }
+            }
+        },
+        "github": {
+            "enable": true,
+            "pages": 2,
+            "push_to": ["free"],
+            "exclude": "",
+            "exclude_repos": []
+        },
+        "twitter": {
+            "enable": false,
+            "users": {}
+        },
+        "google": { "enable": false },
+        "yandex": { "enable": false }
+    },
+    "groups": {
+        "free": {
+            "emoji": true,
+            "list_only": true,
+            "targets": {
+                "clash": "free-clash",
+                "v2ray": "free-v2ray",
+                "singbox": "free-singbox"
+            }
+        }
+    },
+    "storage": {
+        "engine": "gist",
+        "items": {
+            "free-clash": {
+                "username": "AstBt",
+                "gist_id": "6b08d288fa94041ba4ba88477fb776d4",
+                "filename": "free-clash.yaml"
+            },
+            "free-v2ray": {
+                "username": "AstBt",
+                "gist_id": "6b08d288fa94041ba4ba88477fb776d4",
+                "filename": "free-v2ray.txt"
+            },
+            "free-singbox": {
+                "username": "AstBt",
+                "gist_id": "6b08d288fa94041ba4ba88477fb776d4",
+                "filename": "free-singbox.json"
+            },
+            "crawledsubs": {
+                "username": "AstBt",
+                "gist_id": "6b08d288fa94041ba4ba88477fb776d4",
+                "filename": "crawled-subs.json"
+            },
+            "crawledproxies": {
+                "username": "AstBt",
+                "gist_id": "6b08d288fa94041ba4ba88477fb776d4",
+                "filename": "crawled-proxies.json"
+            }
+        }
+    }
+}

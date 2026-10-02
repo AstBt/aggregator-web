@@ -1,0 +1,94 @@
+external-controller: 127.0.0.1:9090
+log-level: silent
+mixed-port: 7890
+mode: global
+proxies:
+- client-fingerprint: firefox
+  grpc-opts:
+    grpc-mode: gun
+    grpc-service-name: tj
+  liveness: true
+  name: 日本01
+  network: grpc
+  port: 20230
+  reality-opts:
+    public-key: opaO8sUF9JU5hP2wRoUgS6aWxFLfen83in6ZWJMonG4
+    short-id: b92b2a09
+  server: jp001.421421.xyz
+  servername: www.nvidia.com
+  sub: https://b3b0549e-160e-495a-a528-cccf5148bc48.372372.xyz/api/v1/client/subscribe?token=5dff63f94e6d427b58212042e22de6fb
+  tls: true
+  type: vless
+  udp: true
+  uuid: e7d1f4d0-f470-44d3-86b4-6eb4c22f1a79
+- client-fingerprint: firefox
+  liveness: true
+  name: 美国02
+  network: xhttp
+  port: 20260
+  reality-opts:
+    public-key: emX07pQIUbT1ssJ7xPYh-1GXnb-R4aBBOf_aLZRkhjI
+    short-id: b1350a2a
+  server: us002.421421.xyz
+  servername: www.nvidia.com
+  sub: https://b3b0549e-160e-495a-a528-cccf5148bc48.372372.xyz/api/v1/client/subscribe?token=5dff63f94e6d427b58212042e22de6fb
+  tls: true
+  type: vless
+  udp: true
+  uuid: e7d1f4d0-f470-44d3-86b4-6eb4c22f1a79
+  xhttp-opts:
+    host: www.nvidia.com
+    mode: auto
+    path: /
+- client-fingerprint: firefox
+  liveness: true
+  name: 美国01
+  network: xhttp
+  port: 20230
+  reality-opts:
+    public-key: emX07pQIUbT1ssJ7xPYh-1GXnb-R4aBBOf_aLZRkhjI
+    short-id: b1350a2a
+  server: us001.421421.xyz
+  servername: aws.amazon.com
+  sub: https://b3b0549e-160e-495a-a528-cccf5148bc48.372372.xyz/api/v1/client/subscribe?token=5dff63f94e6d427b58212042e22de6fb
+  tls: true
+  type: vless
+  udp: true
+  uuid: e7d1f4d0-f470-44d3-86b4-6eb4c22f1a79
+  xhttp-opts:
+    host: aws.amazon.com
+    mode: auto
+    path: /
+- client-fingerprint: firefox
+  grpc-opts:
+    grpc-mode: gun
+    grpc-service-name: tj
+  liveness: true
+  name: 日本04
+  network: grpc
+  port: 20230
+  reality-opts:
+    public-key: lbOfuIKCBPcQH4AEnwnPw1LNxWrl-Bul6KU99H240Fc
+    short-id: abae4722
+  server: jp004.421421.xyz
+  servername: www.nvidia.com
+  sub: https://b3b0549e-160e-495a-a528-cccf5148bc48.372372.xyz/api/v1/client/subscribe?token=5dff63f94e6d427b58212042e22de6fb
+  tls: true
+  type: vless
+  udp: true
+  uuid: e7d1f4d0-f470-44d3-86b4-6eb4c22f1a79
+- name: 本地7897
+  port: 7897
+  server: 127.0.0.1
+  type: http
+proxy-groups:
+- name: GLOBAL
+  proxies:
+  - 日本01
+  - 美国02
+  - 美国01
+  - 日本04
+  - 本地7897
+  type: select
+rules:
+- MATCH,DIRECT
