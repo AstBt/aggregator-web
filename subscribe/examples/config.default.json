@@ -1,0 +1,193 @@
+{
+   "sites": [
+       {
+            "name": "",
+            "subscribe": [],
+            "domain": "",
+            "enable": true,
+            "rename": "",
+            "include": "",
+            "exclude": "",
+            "push_to": [],
+            "ignore_default_exclude": true,
+            "check_alive": true,
+            "max_rate": 2.5,
+            "count": 2,
+            "coupon": "",
+            "require_tls": false,
+            "renew": {
+                "accounts": [
+                    {
+                        "email": "",
+                        "password": "",
+                        "ticket": {
+                            "enable": true,
+                            "auto_reset": false,
+                            "subject": "",
+                            "message": "",
+                            "level": 1
+                        }
+                    }
+                ],
+                "plan_id": 3,
+                "package": "",
+                "method": 1,
+                "coupon_code": ""
+            }
+        }
+    ],
+    "crawl": {
+        "enable": true,
+        "exclude": "",
+        "max_fails": 5,
+        "include_nodes": true,
+        "persist": {
+            "subscribe": "crawledsubs",
+            "nodes": "crawledproxies"
+        },
+        "task": {
+            "rename": "",
+            "include": "",
+            "exclude": ""
+        },
+        "telegram": {
+            "enable": true,
+            "pages": 5,
+            "exclude": "",
+            "channels": {
+                "channel": {
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": []
+                }
+            }
+        },
+        "google": {
+            "enable": false,
+            "exclude": "",
+            "limit": 100,
+            "days": 7,
+            "exclude_sites": [],
+            "push_to": []
+        },
+        "yandex": {
+            "enable": false,
+            "exclude": "",
+            "days": 3,
+            "pages": 5,
+            "exclude_sites": [],
+            "push_to": []
+        },
+        "github": {
+            "enable": true,
+            "pages": 2,
+            "push_to": [],
+            "exclude": "",
+            "exclude_repos": []
+        },
+        "twitter": {
+            "enable": true,
+            "users": {
+                "username": {
+                    "enable": true,
+                    "tweets": 30,
+                    "include": "",
+                    "exclude": "",
+                    "task": {
+                        "rename": ""
+                    },
+                    "push_to": []
+                }
+            }
+        },
+        "repositories": [
+            {
+                "enable": false,
+                "username": "",
+                "repo": "",
+                "commits": 3,
+                "exclude": "",
+                "push_to": []
+            }
+        ],
+        "pages": [
+            {
+                "enable": true,
+                "url": "",
+                "include": "",
+                "exclude": "",
+                "paged": true,
+                "placeholder": "",
+                "start": 1,
+                "end": 10,
+                "task": {
+                    "rename": ""
+                },
+                "push_to": []
+            }
+        ],
+        "scripts": [
+            {
+                "enable": false,
+                "plugin": "dynamic",
+                "persist": "",
+                "task": {
+                    "enable": true,
+                    "check_alive": true,
+                    "exclude": "",
+                    "rename": "",
+                    "push_to": []
+                }
+            }
+        ]
+    },
+    "groups": {
+        "xxx": {
+            "emoji": true,
+            "list_only": true,
+            "targets": {
+                "clash": "xxx-clash",
+                "singbox": "xxx-singbox",
+                "v2ray": "xxx-v2ray"
+            },
+            "regularize": {
+                "enable": false,
+                "locate": true,
+                "residential": true,
+                "digits": 2
+            }
+        }
+    },
+    "storage": {
+        "engine": "xxx",
+        "base": "https://api.xxx.com",
+        "domain": "https://xxx.com",
+        "items": {
+            "xxx-clash": {
+                "username": "",
+                "folder_id": "",
+                "file_id": ""
+            },
+            "xxx-singbox": {
+                "file_id": ""
+            },
+            "xxx-v2ray": {
+                "username": "",
+                "file_id": ""
+            },
+            "crawledsubs": {
+                "username": "",
+                "folder_id": "",
+                "file_id": ""
+            },
+            "crawledproxies": {
+                "username": "",
+                "folder_id": "",
+                "file_id": ""
+            }
+        }
+    }
+}

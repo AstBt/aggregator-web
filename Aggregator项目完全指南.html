@@ -1,0 +1,739 @@
+<!DOCTYPE html>
+<!--
+  Aggregator 项目完全指南
+  ─────────────────────────
+  Assumptions(按 huashu-design 弱 runtime 降级模式):
+  · 交付形态:单文件 HTML 信息文档(非 React),双击即可打开,无外部依赖
+  · 设计方向:内置 3 个可切换方向(A 工程手册纸白 · 默认 / B 终端暖琥珀 / C 编辑部衬线),
+    右上角「方向」按钮切换 —— 主版完整,变体换色板与排印,供用户选定后固化为唯一方向
+  · 内容事实全部来自本仓库 README_CN.md / README.md / subscribe/ 源码 / .github/workflows,
+    未做外部事实断言
+-->
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Aggregator 项目完全指南</title>
+<style>
+  /* ========== 主题系统:三方向 ========== */
+  :root {
+    --bg: #F6F4EE;          /* 纸白 */
+    --panel: #FFFFFF;
+    --ink: #22252A;
+    --ink-2: #5A5E66;
+    --line: #DDD9CE;
+    --accent: #C04A1A;      /* 赤陶橙 */
+    --accent-soft: #F6E3D7;
+    --code-bg: #23262B;
+    --code-ink: #E8E4DA;
+    --ok: #2E7D4F;
+    --warn: #B07A12;
+    --font-display: "Source Han Sans SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --font-body: "Source Han Sans SC", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    --font-mono: "JetBrains Mono", "Cascadia Code", Consolas, "Courier New", monospace;
+    --radius: 6px;
+  }
+  :root[data-theme="b"] {
+    --bg: #16181D;          /* 暖终端 */
+    --panel: #1E2128;
+    --ink: #E8E4DA;
+    --ink-2: #9B968A;
+    --line: #33363E;
+    --accent: #E8A33D;      /* 暖琥珀 */
+    --accent-soft: #3A3226;
+    --code-bg: #101216;
+    --code-ink: #D8D4C8;
+    --ok: #6FBF8E;
+    --warn: #E0B458;
+  }
+  :root[data-theme="c"] {
+    --bg: #FDFCFA;          /* 编辑部 */
+    --panel: #FFFFFF;
+    --ink: #1C1A17;
+    --ink-2: #6B655C;
+    --line: #E4DFD6;
+    --accent: #7A2E2E;      /* 牛血红 */
+    --accent-soft: #F0E2E0;
+    --code-bg: #2A2723;
+    --code-ink: #EFEAE0;
+    --font-display: "Noto Serif SC", "Source Han Serif SC", Georgia, "SimSun", serif;
+    --font-body: "Noto Serif SC", "Source Han Serif SC", Georgia, "SimSun", serif;
+    --radius: 2px;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 76px; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15.5px;
+    line-height: 1.75;
+    transition: background .3s, color .3s;
+  }
+  ::selection { background: var(--accent); color: #fff; }
+  p { text-wrap: pretty; }
+
+  /* ========== 顶栏 ========== */
+  header {
+    position: sticky; top: 0; z-index: 50;
+    background: color-mix(in srgb, var(--bg) 88%, transparent);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .topbar {
+    max-width: 1180px; margin: 0 auto; padding: 14px 24px;
+    display: flex; align-items: center; gap: 18px;
+  }
+  .brand {
+    font-family: var(--font-display);
+    font-weight: 800; font-size: 17px; letter-spacing: .02em;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .brand .mark {
+    width: 26px; height: 26px; border: 2.5px solid var(--accent);
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 900; color: var(--accent); font-family: var(--font-mono);
+    border-radius: var(--radius);
+  }
+  nav.toc-inline { display: flex; gap: 2px; flex-wrap: wrap; margin-left: auto; }
+  nav.toc-inline a {
+    color: var(--ink-2); text-decoration: none; font-size: 13px;
+    padding: 5px 10px; border-radius: var(--radius);
+    transition: color .15s, background .15s;
+  }
+  nav.toc-inline a:hover, nav.toc-inline a.active {
+    color: var(--accent); background: var(--accent-soft);
+  }
+  .theme-btn {
+    font-family: var(--font-mono); font-size: 12px;
+    background: none; border: 1px solid var(--line); color: var(--ink-2);
+    padding: 6px 12px; cursor: pointer; border-radius: var(--radius);
+    transition: all .15s; white-space: nowrap;
+  }
+  .theme-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ========== 布局 ========== */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+  section { padding: 56px 0 8px; }
+  .sec-tag {
+    font-family: var(--font-mono); font-size: 12px; color: var(--accent);
+    letter-spacing: .18em; margin-bottom: 10px;
+  }
+  h2 {
+    font-family: var(--font-display); font-size: 30px; font-weight: 800;
+    line-height: 1.25; margin-bottom: 22px; letter-spacing: .01em;
+  }
+  h3 { font-size: 19px; font-weight: 700; margin: 34px 0 14px; }
+  h3 .idx { color: var(--accent); font-family: var(--font-mono); font-size: 14px; margin-right: 8px; }
+  h4 { font-size: 15.5px; margin: 20px 0 8px; }
+  .lead { font-size: 16.5px; color: var(--ink-2); max-width: 70ch; margin-bottom: 20px; }
+  .muted { color: var(--ink-2); }
+  strong { font-weight: 700; }
+  em { font-style: normal; color: var(--accent); font-weight: 600; }
+
+  /* ========== Hero ========== */
+  .hero { padding: 72px 0 48px; border-bottom: 1px solid var(--line); }
+  .hero h1 {
+    font-family: var(--font-display); font-weight: 900;
+    font-size: clamp(38px, 6vw, 60px); line-height: 1.12;
+    max-width: 16em; letter-spacing: .01em;
+  }
+  .hero h1 .hl { color: var(--accent); }
+  .hero .sub {
+    margin-top: 22px; font-size: 17.5px; color: var(--ink-2); max-width: 62ch;
+  }
+  .hero-facts {
+    margin-top: 40px; display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+    border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden;
+    background: var(--panel);
+  }
+  .fact { padding: 18px 20px; border-right: 1px solid var(--line); }
+  .fact:last-child { border-right: none; }
+  .fact .n { font-family: var(--font-mono); font-size: 26px; font-weight: 700; color: var(--accent); }
+  .fact .l { font-size: 12.5px; color: var(--ink-2); margin-top: 2px; }
+
+  /* ========== 管道图 ========== */
+  .pipeline {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch;
+    margin: 26px 0 10px;
+  }
+  .pipe-node {
+    flex: 1 1 120px; min-width: 120px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    padding: 12px 14px; position: relative;
+  }
+  .pipe-node .t { font-weight: 700; font-size: 13.5px; }
+  .pipe-node .d { font-size: 12px; color: var(--ink-2); margin-top: 3px; line-height: 1.5; }
+  .pipe-node.src { border-top: 3px solid var(--ink-2); }
+  .pipe-node.mid { border-top: 3px solid var(--accent); }
+  .pipe-arrow {
+    align-self: center; color: var(--accent); font-family: var(--font-mono);
+    font-size: 16px; flex: 0 0 auto;
+  }
+  .pipe-legend { font-size: 12.5px; color: var(--ink-2); margin-bottom: 8px; }
+  .pipe-legend i {
+    display: inline-block; width: 14px; height: 3px; vertical-align: middle;
+    margin: 0 4px 2px 10px; font-style: normal;
+  }
+
+  /* ========== 卡片网格 ========== */
+  .grid { display: grid; gap: 14px; margin: 20px 0; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 20px 22px;
+  }
+  .card h5 { font-size: 15px; margin-bottom: 8px; }
+  .card p, .card li { font-size: 13.5px; color: var(--ink-2); line-height: 1.7; }
+  .card .code-inline { font-size: 12px; }
+  .card ul { padding-left: 18px; }
+
+  /* ========== 表格 ========== */
+  table { width: 100%; border-collapse: collapse; margin: 16px 0; background: var(--panel); font-size: 13.5px; }
+  th, td { border: 1px solid var(--line); padding: 9px 12px; text-align: left; vertical-align: top; line-height: 1.6; }
+  th {
+    background: color-mix(in srgb, var(--accent-soft) 55%, var(--panel));
+    font-weight: 700; font-size: 13px; white-space: nowrap;
+  }
+  td .proto { font-family: var(--font-mono); font-weight: 700; color: var(--accent); }
+  .tbl-scroll { overflow-x: auto; }
+  .pill {
+    display: inline-block; font-family: var(--font-mono); font-size: 11px;
+    padding: 1px 8px; border-radius: 20px; border: 1px solid var(--line); color: var(--ink-2);
+    white-space: nowrap;
+  }
+  .pill.req { border-color: var(--accent); color: var(--accent); font-weight: 700; }
+  .pill.opt { color: var(--ink-2); }
+
+  /* ========== 代码块 ========== */
+  .code {
+    background: var(--code-bg); color: var(--code-ink);
+    font-family: var(--font-mono); font-size: 12.8px; line-height: 1.7;
+    border-radius: var(--radius); padding: 16px 18px;
+    overflow-x: auto; margin: 14px 0; white-space: pre;
+  }
+  .code .cap {
+    display: block; color: #8B867A; font-size: 11.5px; margin-bottom: 8px;
+    letter-spacing: .06em; border-bottom: 1px solid #33363E; padding-bottom: 6px;
+    white-space: normal;
+  }
+  .code .c { color: #7C8492; }          /* 注释 */
+  .code .k { color: #E8A33D; }          /* 关键/键名 */
+  .code .v { color: #8FCB9B; }          /* 值 */
+  .code .a { color: #E88D6B; }          /* 强调值 */
+  :root[data-theme="b"] .code { background: #101216; }
+
+  /* ========== 提示框 ========== */
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--accent);
+    background: var(--panel); border-radius: var(--radius);
+    padding: 14px 18px; margin: 16px 0; font-size: 13.8px;
+  }
+  .note .nt {
+    font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .12em;
+    color: var(--accent); display: block; margin-bottom: 5px;
+  }
+  .note.warn { border-left-color: var(--warn); }
+  .note.warn .nt { color: var(--warn); }
+  .note code, p code, td code, li code {
+    font-family: var(--font-mono); font-size: 12.5px;
+    background: color-mix(in srgb, var(--accent-soft) 60%, var(--panel));
+    padding: 1px 6px; border-radius: 3px;
+  }
+
+  /* ========== 步骤 ========== */
+  .step {
+    display: grid; grid-template-columns: 52px 1fr; gap: 16px;
+    padding: 22px 0; border-bottom: 1px dashed var(--line);
+  }
+  .step:last-of-type { border-bottom: none; }
+  .step .no {
+    font-family: var(--font-mono); font-size: 20px; font-weight: 700; color: var(--accent);
+    border: 2px solid var(--accent); border-radius: var(--radius);
+    width: 44px; height: 44px; display: grid; place-items: center;
+  }
+  .step h4 { margin: 4px 0 8px; font-size: 16.5px; }
+  .step p, .step li { font-size: 14px; color: var(--ink-2); }
+  .step ul { padding-left: 18px; margin: 6px 0; }
+  .why {
+    margin-top: 10px; font-size: 13px; padding: 10px 14px;
+    background: var(--accent-soft); border-radius: var(--radius);
+  }
+  .why b { color: var(--accent); font-family: var(--font-mono); font-size: 11.5px; letter-spacing: .1em; }
+
+  /* ========== 双路径选择 ========== */
+  .paths { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
+  @media (max-width: 800px) { .paths { grid-template-columns: 1fr; } }
+  .path {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: var(--radius); padding: 24px; position: relative;
+  }
+  .path.rec { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  .path .tag {
+    position: absolute; top: -11px; left: 18px;
+    background: var(--accent); color: #fff; font-family: var(--font-mono);
+    font-size: 11px; padding: 2px 10px; letter-spacing: .1em;
+  }
+  .path h4 { font-size: 17px; margin: 4px 0 6px; }
+  .path .sub2 { font-family: var(--font-mono); font-size: 12px; color: var(--accent); margin-bottom: 12px; }
+  .path p, .path li { font-size: 13.5px; color: var(--ink-2); }
+  .path ul { padding-left: 18px; }
+
+  footer {
+    margin-top: 72px; border-top: 1px solid var(--line);
+    padding: 28px 0 48px; font-size: 12.5px; color: var(--ink-2);
+  }
+  footer .wrap { display: flex; justify-content: space-between; flex-wrap: wrap; gap: 10px; }
+
+  @media (max-width: 720px) {
+    nav.toc-inline { display: none; }
+    .hero { padding: 48px 0 36px; }
+    section { padding-top: 44px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="topbar">
+    <div class="brand"><span class="mark">AG</span>Aggregator 指南</div>
+    <nav class="toc-inline">
+      <a href="#overview">总览</a>
+      <a href="#arch">架构</a>
+      <a href="#protocols">协议对比</a>
+      <a href="#config">配置详解</a>
+      <a href="#howto">使用实践</a>
+    </nav>
+    <button class="theme-btn" id="themeBtn" title="切换设计方向">方向 A · 工程手册</button>
+  </div>
+</header>
+
+<!-- ============ HERO ============ -->
+<div class="wrap hero">
+  <h1>一条流水线,<br>把散落互联网的<span class="hl">免费代理</span><br>炼成可用的订阅。</h1>
+  <p class="sub">Aggregator 是一个<strong>免费代理池构建工具</strong>:从 Telegram、GitHub、搜索引擎、Twitter、机场网站等渠道自动爬取代理订阅,经 Clash 内核验活、质量过滤、subconverter 格式转换,最终推送为各类客户端可直接订阅的 URL。</p>
+  <div class="hero-facts">
+    <div class="fact"><div class="n">2</div><div class="l">程序入口 process.py / collect.py</div></div>
+    <div class="fact"><div class="n">7+</div><div class="l">爬取源(TG/GH/Google/Yandex/Twitter/页面/脚本)</div></div>
+    <div class="fact"><div class="n">12+</div><div class="l">支持的代理协议</div></div>
+    <div class="fact"><div class="n">6</div><div class="l">存储后端(Gist/PasteGG/Imperial/Pastefy/QBin/本地)</div></div>
+  </div>
+</div>
+
+<!-- ============ 1 总览 ============ -->
+<section id="overview">
+<div class="wrap">
+  <div class="sec-tag">01 / OVERVIEW</div>
+  <h2>核心作用:它在解决什么问题</h2>
+  <p class="lead">免费代理散落在各处:Telegram 频道里的一条条订阅链接、GitHub 代码仓库里的节点分享、机场网站的免费套餐。手动收集费时费力、质量参差、隔天就失效。Aggregator 把「找 → 验 → 洗 → 转 → 存」整条链路自动化,产出<em>稳定更新、格式齐全、按质分组</em>的订阅源。</p>
+
+  <div class="grid g3">
+    <div class="card"><h5>🕷 多源爬取</h5><p>Telegram 频道、GitHub 代码与 Issues、Google / Yandex 搜索、Twitter 时间线、任意网页、机场自动注册、自定义 Python 脚本插件,七类来源统一调度。</p></div>
+    <div class="card"><h5>🔍 智能验证</h5><p>用内置 Clash / mihomo 内核真实拨号测试每个节点:活性、延迟、倍率、落地位置,不合格的直接丢弃——「能连上」才叫代理。</p></div>
+    <div class="card"><h5>🔄 格式转换</h5><p>通过内置 subconverter 把同一份节点池转换为 Clash、V2Ray、SingBox 等格式,一次运行,多客户端通用。</p></div>
+    <div class="card"><h5>💾 灵活存储</h5><p>结果推送到 GitHub Gist、PasteGG 等云端剪贴板,得到稳定的订阅 URL;也可存本地文件,完全自主。</p></div>
+    <div class="card"><h5>🔌 插件系统</h5><p>爬不到的地方?在 <code class="code-inline">crawl/scripts</code> 下写一个实现 <code class="code-inline">parse() / run()</code> 的 Python 插件即可接入流水线。</p></div>
+    <div class="card"><h5>🏷 分组管理</h5><p>不同来源的节点可打上不同标签推送到不同分组(如 premium / free / backup),每组独立转换、独立存储。</p></div>
+  </div>
+
+  <div class="note">
+    <span class="nt">举例 · 一句话理解</span>
+    你在客户端里填一个 Gist 订阅 URL,每天早上自动多出几十个「昨天验证还活着」的免费节点——这背后就是 Aggregator 定时跑完一整趟流水线的结果。
+  </div>
+</div>
+</section>
+
+<!-- ============ 2 架构 ============ -->
+<section id="arch">
+<div class="wrap">
+  <div class="sec-tag">02 / ARCHITECTURE</div>
+  <h2>设计架构:五段流水线 + 两个入口</h2>
+  <p class="lead">整个项目是一条单向数据流水线:爬取源产出原始订阅链接,逐级加工为可用节点,最终推送到存储。所有模块都在 <code>subscribe/</code> 目录下,纯 Python 实现,Clash 与 subconverter 以<em>预编译二进制</em>形式内置,开箱即用。</p>
+
+  <div class="pipe-legend"><i style="background:var(--ink-2)"></i>数据来源<i style="background:var(--accent)"></i>加工环节</div>
+  <div class="pipeline">
+    <div class="pipe-node src"><div class="t">① 爬取 Crawl</div><div class="d">TG / GitHub / Google / Yandex / Twitter / 页面 / 脚本 → 提取订阅链接</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">② 注册 Airport</div><div class="d">对机场站自动注册账号、领免费套餐、换取订阅(airport.py)</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">③ 聚合 + 验活 Clash</div><div class="d">生成临时 Clash 配置,内核真实连通测试,按延迟 / 倍率过滤(clash.py)</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">④ 转换 Subconverter</div><div class="d">按分组转换为 clash / v2ray / singbox 等格式(subconverter.py)</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">⑤ 推送 Push</div><div class="d">上传到 Gist / PasteGG / 本地等后端,产出订阅 URL(push.py)</div></div>
+  </div>
+
+  <h3><span class="idx">2.1</span>核心模块一览(目录对应)</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>模块文件</th><th>职责</th><th>关键点</th></tr>
+    <tr><td><code>subscribe/process.py</code></td><td><strong>完整入口</strong>:加载 JSON 配置,调度整条流水线</td><td>配置驱动,功能全,支持全部存储后端</td></tr>
+    <tr><td><code>subscribe/collect.py</code></td><td><strong>简化入口</strong>:自动发现机场、注册、收集订阅</td><td>命令行参数驱动,结果只推 Gist,适合个人</td></tr>
+    <tr><td><code>subscribe/crawl/</code></td><td>爬虫引擎与各渠道实现</td><td><code>channels/</code> 下每个文件对应一个源;plugins 支持自定义脚本</td></tr>
+    <tr><td><code>subscribe/airport.py</code></td><td>机场注册器:注册账号、下单免费套餐、解析订阅</td><td>支持灵活邮箱模式(--flexible)绕过邮箱验证</td></tr>
+    <tr><td><code>subscribe/clash.py</code></td><td>生成 Clash 配置 + 内核验活</td><td><code>clash/</code> 内置 Win/mac/Linux 三平台内核与 Country.mmdb</td></tr>
+    <tr><td><code>subscribe/subconverter.py</code></td><td>调用 subconverter 做格式转换</td><td><code>subconverter/</code> 内置三平台二进制与全套规则</td></tr>
+    <tr><td><code>subscribe/push.py</code></td><td>存储后端抽象(PushTo 基类 + 6 个实现)</td><td>统一 push_to 接口,按 engine 配置路由</td></tr>
+    <tr><td><code>subscribe/outbound/</code></td><td>各代理协议的字段校验器</td><td>每协议一个 Verifier,决定节点配置是否合法</td></tr>
+    <tr><td><code>subscribe/config/</code></td><td>配置文件解析与数据模型</td><td>把 JSON 映射为 ProcessConfig 等强类型结构</td></tr>
+    <tr><td><code>.github/workflows/</code></td><td>官方定时自动化</td><td>process / collect / refresh / delete / checkin 五套现成工作流</td></tr>
+  </table>
+  </div>
+
+  <h3><span class="idx">2.2</span>两个入口怎么选</h3>
+  <div class="paths">
+    <div class="path rec">
+      <span class="tag">功能完整</span>
+      <h4>process.py</h4>
+      <div class="sub2">配置驱动 · 推荐用于长期自动化</div>
+      <ul>
+        <li>需要一份 JSON 配置文件( sites / crawl / groups / storage )</li>
+        <li>可配置<strong>所有</strong>爬取源与<strong>所有</strong>存储后端</li>
+        <li>支持分组输出、过滤规则、自动注册、续费管理</li>
+        <li>学习成本较高,但可控性最强</li>
+      </ul>
+    </div>
+    <div class="path">
+      <h4>collect.py</h4>
+      <div class="sub2">参数驱动 · 适合个人快速上手</div>
+      <ul>
+        <li>无需配置文件,纯命令行参数</li>
+        <li>自动收集机场网站 → 注册 → 拿订阅</li>
+        <li>结果只推送 GitHub Gist</li>
+        <li>两条命令就能跑起来,几分钟出结果</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="note">
+    <span class="nt">举例 · 选型判断</span>
+    想立刻体验、只关心「有没有免费节点」→ 用 <code>collect.py</code>。想把 Telegram / GitHub 爬到的节点和机场订阅分流到不同分组、存到不同后端、定时自动更新 → 用 <code>process.py</code>。
+  </div>
+</div>
+</section>
+
+<!-- ============ 3 协议 ============ -->
+<section id="protocols">
+<div class="wrap">
+  <div class="sec-tag">03 / PROTOCOLS</div>
+  <h2>代理协议对比:怎么选、怎么取舍</h2>
+  <p class="lead">README 声明支持的核心协议为:VMess、VLESS、Trojan、SS、SSR、Snell、Hysteria、Hysteria2、TUIC、AnyTLS、HTTP、SOCKS;<code>subscribe/outbound/</code> 中还有 Mieru、SSH、WireGuard、OpenVPN 等扩展校验器。<strong>协议没有绝对优劣</strong>,差别在于「伪装能力、传输性能、客户端生态」三个维度的取舍。</p>
+
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>协议</th><th>传输基础</th><th>伪装 / 抗封锁</th><th>性能</th><th>生态与客户端</th><th>一句话定位</th></tr>
+    <tr><td><span class="proto">SS</span><br>Shadowsocks</td><td>TCP</td><td>弱 — 加密流量特征明显,易被主动探测</td><td>轻量、延迟低</td><td>极广,几乎所有客户端</td><td>老牌轻量之选,部署最简单</td></tr>
+    <tr><td><span class="proto">SSR</span></td><td>TCP + 混淆</td><td>中 — 在 SS 上加协议/混淆层,但项目已停更</td><td>略高于 SS</td><td>逐渐萎缩</td><td>历史兼容用,新部署不推荐</td></tr>
+    <tr><td><span class="proto">VMess</span></td><td>TCP(TLS 可选)</td><td>中 — 自定义加密协议 + 时间戳校验</td><td>加密层较多,开销偏大</td><td>V2Ray 生态核心,支持广</td><td>V2Ray 家族经典协议,成熟稳定</td></tr>
+    <tr><td><span class="proto">VLESS</span></td><td>TCP(TLS/Reality)</td><td><strong>强</strong> — 本体不加密,配合 XTLS / Reality 可伪装成正常 HTTPS 站点</td><td>轻量,开销小于 VMess</td><td>Xray 系客户端</td><td>当前主流新部署,抗封锁首选之一</td></tr>
+    <tr><td><span class="proto">Trojan</span></td><td>TLS</td><td><strong>强</strong> — 流量就是标准 HTTPS,直连访问一个真证书网站</td><td>接近原生 HTTPS</td><td>广泛</td><td>「长得像正经网站」的老牌强伪装</td></tr>
+    <tr><td><span class="proto">Hysteria</span></td><td>QUIC / UDP</td><td>中 — 伪装为 HTTP/3 流量</td><td><strong>极高</strong> — 拥塞控制激进,差线路也快</td><td>官方客户端 + 主流内核</td><td>高丢包 / 跨洋慢线路救星</td></tr>
+    <tr><td><span class="proto">Hysteria2</span></td><td>QUIC / UDP</td><td>中强 — 完整 TLS 1.3 握手,认证更简洁</td><td><strong>极高</strong>,配置比一代简单得多</td><td>主流内核均已支持</td><td>新一代 UDP 高速协议的事实标准</td></tr>
+    <tr><td><span class="proto">TUIC</span></td><td>QUIC / UDP</td><td>中 — 基于 QUIC TLS</td><td>低延迟,多路复用</td><td>主流内核支持</td><td>QUIC 阵营的低延迟选项</td></tr>
+    <tr><td><span class="proto">Snell</span></td><td>TCP</td><td>中 — 私有二进制协议</td><td>高效轻量</td><td><em>Surge 生态专属</em></td><td>苹果系 Surge 用户的私有选择</td></tr>
+    <tr><td><span class="proto">AnyTLS</span></td><td>TLS</td><td><strong>强</strong> — 专为消除 TLS-in-TLS 指纹设计</td><td>接近直连</td><td>较新,mihomo 等已支持</td><td>针对流量指纹检测的新方案</td></tr>
+    <tr><td><span class="proto">HTTP</span> / <span class="proto">SOCKS5</span></td><td>明文 TCP</td><td><strong>无</strong> — 无加密,内容可被直接审阅</td><td>零开销</td><td>通用标准</td><td>只适合内网、本机中转等可信链路</td></tr>
+  </table>
+  </div>
+
+  <div class="note">
+    <span class="nt">举例 · 典型搭配</span>
+    机场订阅大多是 <code>SS / VMess / Trojan</code>;自己搭新服务器优先 <code>VLESS + Reality</code> 或 <code>Hysteria2</code>;网络对 UDP 限速严重时退回 <code>Trojan</code>;只在本机 / 局域网转发用 <code>SOCKS5</code> 即可。
+  </div>
+  <div class="note warn">
+    <span class="nt">注意 · ENABLE_SPECIAL_PROTOCOLS</span>
+    VLESS、Hysteria2 等较新的协议默认可能不参与收集,官方工作流通过环境变量 <code>ENABLE_SPECIAL_PROTOCOLS</code> 控制是否纳入特殊协议。
+  </div>
+</div>
+</section>
+
+<!-- ============ 4 配置 ============ -->
+<section id="config">
+<div class="wrap">
+  <div class="sec-tag">04 / CONFIGURATION</div>
+  <h2>配置详解:填什么、哪些必须填、结果长什么样</h2>
+  <p class="lead">两个入口的配置方式完全不同:<code>collect.py</code> 只需两个环境变量;<code>process.py</code> 的一切都由一份 JSON 配置文件驱动。先理解一条<em>「名字链条」</em>,配置文件就读懂了一半:</p>
+
+  <div class="pipeline">
+    <div class="pipe-node src"><div class="t">sites[].push_to</div><div class="d">每个订阅来源声明「我要去哪个分组」</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">groups.分组名.targets</div><div class="d">分组声明「我要产出哪些格式,存到哪个存储项」</div></div>
+    <div class="pipe-arrow">→</div>
+    <div class="pipe-node mid"><div class="t">storage.items.存储项</div><div class="d">存储项声明「最终写到哪个 Gist / 文件」</div></div>
+  </div>
+  <div class="note">
+    <span class="nt">举例 · 名字链条串起来</span>
+    站点 A 写 <code>"push_to": ["premium"]</code> → 分组 <code>premium</code> 写 <code>"targets": {"clash": "premium-clash"}</code> → 存储里要有 <code>"premium-clash"</code> 这个 item 指向你的 Gist 文件。三个名字(<code>premium</code>、<code>premium-clash</code>)必须对得上,缺一环节点就「流」不到终点。
+  </div>
+
+  <h3><span class="idx">4.1</span>配置文件总骨架(process.py)</h3>
+  <div class="code"><span class="cap">my-config.json —— 模板见 subscribe/examples/config.default.json</span>{
+  <span class="k">"sites"</span>:   [ ... ],   <span class="c">// 已有订阅 / 机场站点(可自动注册)</span>
+  <span class="k">"crawl"</span>:   { ... },   <span class="c">// 爬虫开关与各数据源配置</span>
+  <span class="k">"groups"</span>:  { ... },   <span class="c">// 输出分组、格式与归一化</span>
+  <span class="k">"storage"</span>: { ... }    <span class="c">// 存储引擎与存储项</span>
+}</div>
+
+  <h3><span class="idx">4.2</span>凭证与环境变量:哪些必须,哪些可选</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>变量</th><th>必填?</th><th>用于</th><th>说明</th></tr>
+    <tr><td><code>PUSH_TOKEN</code></td><td><span class="pill req">process.py 必需</span></td><td>存储推送</td><td>存储服务的访问令牌;engine 为 gist 时即 GitHub PAT(需 gist 权限)</td></tr>
+    <tr><td><code>SUBSCRIBE_CONF</code></td><td><span class="pill req">或用 -s 指定</span></td><td>process.py</td><td>配置文件路径或远程 URL;两者给其一即可</td></tr>
+    <tr><td><code>GIST_PAT</code></td><td><span class="pill req">collect.py 必需</span></td><td>collect.py</td><td>GitHub 个人访问令牌(或命令行 <code>-k</code>)</td></tr>
+    <tr><td><code>GIST_LINK</code></td><td><span class="pill req">collect.py 必需</span></td><td>collect.py</td><td>格式 <code>用户名/gist_id</code>(或命令行 <code>-g</code>)</td></tr>
+    <tr><td><code>GH_TOKEN</code> / <code>GH_COOKIE</code></td><td><span class="pill opt">可选 · 强烈推荐</span></td><td>GitHub 爬虫</td><td>没有它 GitHub 搜索很快被限流;PAT 推荐,cookie 是网页登录态</td></tr>
+    <tr><td><code>CUSTOMIZE_LINK</code></td><td><span class="pill opt">可选</span></td><td>collect.py</td><td>自定义机场列表 URL,每行「域名 [优惠码] [邀请码]」</td></tr>
+    <tr><td><code>LOCAL_BASEDIR</code></td><td><span class="pill opt">可选</span></td><td>本地存储</td><td>本地存储引擎的输出根目录,不设则相对项目根</td></tr>
+    <tr><td><code>WORKFLOW_MODE</code></td><td><span class="pill opt">可选</span></td><td>process.py</td><td><code>0</code> 爬取+聚合(默认) / <code>1</code> 仅爬取 / <code>2</code> 仅聚合</td></tr>
+    <tr><td><code>SKIP_ALIVE_CHECK</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td><code>true</code> 跳过验活,速度换质量</td></tr>
+    <tr><td><code>SKIP_REMARK</code> / <code>ENABLE_SPECIAL_PROTOCOLS</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td>跳过备注更新 / 启用 VLESS、Hysteria2 等特殊协议</td></tr>
+  </table>
+  </div>
+
+  <h3><span class="idx">4.3</span>支持的平台与爬取源配置(crawl)</h3>
+  <div class="grid g2">
+    <div class="card"><h5>Telegram 频道</h5><p><code>telegram.channels</code> 里按频道名配置 include / exclude 关键词与 push_to 分组,靠公共频道网页版翻页爬取,无需 TG 账号。</p></div>
+    <div class="card"><h5>GitHub</h5><p><code>github.push_to</code> 必填;配合 <code>GH_TOKEN</code> 搜索代码与 Issues 中的订阅链接,<code>exclude_repos</code> 可拉黑噪音仓库。</p></div>
+    <div class="card"><h5>Google / Yandex 搜索</h5><p>默认关闭,设 <code>"enable": true</code> 打开;适合补充冷门源,但验证码风险高,建议给 <code>exclude_sites</code> 拉黑名单。</p></div>
+    <div class="card"><h5>Twitter 用户</h5><p><code>twitter.users</code> 按用户名配置,爬时间线中带 <code>vmess:// ss:// trojan://</code> 等链接的推文。</p></div>
+    <div class="card"><h5>自定义页面 pages</h5><p>直接给 URL,支持 <code>{page}</code> 占位符批量翻页(<code>start</code>/<code>end</code>);是最简单可靠的源。</p></div>
+    <div class="card"><h5>脚本插件 scripts</h5><p>指定 <code>"plugin": "名字"</code>,执行 <code>crawl/scripts</code> 下你自写的 Python 插件,任何「要登录 / 要签名」的站点都能接。</p></div>
+  </div>
+
+  <h3><span class="idx">4.4</span>sites 站点配置要点</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>字段</th><th>必填?</th><th>默认</th><th>说明</th></tr>
+    <tr><td><code>name</code></td><td><span class="pill req">必需</span></td><td>—</td><td>唯一标识,用于日志与节点命名</td></tr>
+    <tr><td><code>push_to</code></td><td><span class="pill req">必需</span></td><td>[]</td><td>推送到哪些分组,不能为空</td></tr>
+    <tr><td><code>subscribe</code> 或 <code>domain</code></td><td><span class="pill req">二选一</span></td><td>—</td><td>已有订阅链接(填了就跳过注册);或机场域名,由注册器自动注册领套餐</td></tr>
+    <tr><td><code>include</code> / <code>exclude</code></td><td><span class="pill opt">可选</span></td><td>""</td><td>正则过滤节点名,如 <code>"香港|新加坡"</code> / <code>"过期|官网"</code></td></tr>
+    <tr><td><code>rename</code></td><td><span class="pill opt">可选</span></td><td>""</td><td>重命名模板,<code>"🇭🇰 {name}"</code> 中 <code>{name}</code> 是原节点名</td></tr>
+    <tr><td><code>rate</code></td><td><span class="pill opt">可选</span></td><td>2.5</td><td>最大流量倍率,超过即丢弃(机场「三倍流量」节点克星)</td></tr>
+    <tr><td><code>check_alive</code></td><td><span class="pill opt">可选</span></td><td>true</td><td>是否参与 Clash 验活</td></tr>
+    <tr><td><code>count</code> / <code>coupon</code></td><td><span class="pill opt">可选</span></td><td>2 / ""</td><td>自动注册的账号数与注册优惠码</td></tr>
+  </table>
+  </div>
+
+  <h3><span class="idx">4.5</span>存储后端与结果形式(storage)</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>engine</th><th>服务</th><th>所需凭证</th><th>特点</th></tr>
+    <tr><td><code>gist</code> <span class="pill req">推荐</span></td><td>GitHub Gist</td><td><code>PUSH_TOKEN</code>(PAT)</td><td>免费稳定、无配额焦虑、raw URL 可直接订阅、自带版本历史</td></tr>
+    <tr><td><code>pastegg</code></td><td>Paste.gg</td><td><code>PUSH_TOKEN</code>(API Key)</td><td>支持文件夹组织,有速率限制</td></tr>
+    <tr><td><code>imperial</code></td><td>ImperialBin</td><td><code>PUSH_TOKEN</code></td><td>简单易用,文件大小有限制</td></tr>
+    <tr><td><code>pastefy</code></td><td>Pastefy.app</td><td><code>PUSH_TOKEN</code></td><td>API 友好,较新的服务</td></tr>
+    <tr><td><code>qbin</code></td><td>QBin.me</td><td><code>PUSH_TOKEN</code></td><td>支持密码与过期时间(item 里配 <code>password</code>/<code>expire</code>)</td></tr>
+    <tr><td><code>local</code></td><td>本地文件</td><td>无</td><td>完全可控,输出到 <code>LOCAL_BASEDIR</code> 下,分发需自行解决</td></tr>
+  </table>
+  </div>
+
+  <div class="code"><span class="cap">storage 完整示例 —— groups.targets 的值就是这里的 item 键名</span>{
+  <span class="k">"engine"</span>: <span class="a">"gist"</span>,
+  <span class="k">"items"</span>: {
+    <span class="k">"premium-clash"</span>: { <span class="k">"username"</span>: <span class="v">"你的用户名"</span>, <span class="k">"gist_id"</span>: <span class="v">"abc123..."</span>, <span class="k">"filename"</span>: <span class="v">"premium.yaml"</span> },
+    <span class="k">"free-v2ray"</span>:    { <span class="k">"username"</span>: <span class="v">"你的用户名"</span>, <span class="k">"gist_id"</span>: <span class="v">"abc123..."</span>, <span class="k">"filename"</span>: <span class="v">"free-v2ray.txt"</span> },
+    <span class="k">"crawledsubs"</span>:   { <span class="k">"username"</span>: <span class="v">"你的用户名"</span>, <span class="k">"gist_id"</span>: <span class="v">"abc123..."</span>, <span class="k">"filename"</span>: <span class="v">"subs.json"</span> }
+  }
+}</div>
+
+  <h3><span class="idx">4.6</span>结果以什么形式存在</h3>
+  <ul style="padding-left:20px; max-width:75ch; color:var(--ink-2)">
+    <li style="margin-bottom:8px"><strong>每个「分组 × 格式」一个文件</strong>:如 <code>premium-clash</code> 产出 Clash YAML、<code>free-v2ray</code> 产出 Base64 订阅文本、<code>singbox</code> 产出 JSON。</li>
+    <li style="margin-bottom:8px"><strong>云端后端 → 订阅 URL</strong>:推送到 Gist 后,该文件的 <em>raw URL</em> 就是订阅地址,直接填进 Clash / V2RayN / Shadowrocket 等客户端。</li>
+    <li style="margin-bottom:8px"><strong>本地后端 → 文件树</strong>:<code>&lt;LOCAL_BASEDIR&gt;/&lt;folder_id&gt;/&lt;file_id&gt;</code>,如 <code>output/premium/clash.yaml</code>。</li>
+    <li><strong>附加持久化</strong>:<code>crawl.persist</code> 指定的存储项(默认 <code>crawledsubs</code> / <code>crawledproxies</code>)会保存爬到的订阅链接与节点快照 JSON,供下次增量复用。</li>
+  </ul>
+</div>
+</section>
+
+<!-- ============ 5 使用实践 ============ -->
+<section id="howto">
+<div class="wrap">
+  <div class="sec-tag">05 / HOW-TO</div>
+  <h2>最佳实践:一步一步跑通</h2>
+  <p class="lead">下面给出两条路线:<strong>快速路线(collect.py)</strong>十分钟见效;<strong>完整路线(process.py)</strong>一步到位搭起可持续自动更新的代理池。步骤里标注了每一步「为什么」。</p>
+
+  <h3><span class="idx">5.1</span>路线一 · collect.py 快速收集(个人尝鲜)</h3>
+
+  <div class="step"><div class="no">1</div><div>
+    <h4>准备环境</h4>
+    <div class="code"><span class="cap">需要 Python ≥ 3.10</span>git clone https://github.com/wzdnzd/aggregator.git
+cd aggregator
+pip install -r requirements.txt</div>
+    <div class="why"><b>为什么</b> requirements 只装 5 个包(PyYAML、tqdm、geoip2 等),Clash 和 subconverter 的二进制已在仓库里,无需额外下载。</div>
+  </div></div>
+
+  <div class="step"><div class="no">2</div><div>
+    <h4>拿到 GitHub 令牌和 Gist</h4>
+    <p>访问 <code>github.com/settings/tokens</code> 生成 classic Token,勾选 <code>gist</code> 权限;再到 <code>gist.github.com</code> 随便建一个 Gist,从地址栏取 ID:<code>gist.github.com/用户名/【这一段是 ID】</code>。</p>
+    <div class="why"><b>为什么</b> 令牌是「你有权写入 Gist」的凭证;Gist 是免费、无限量、能生成 raw URL 的存储,是官方推荐后端。</div>
+  </div></div>
+
+  <div class="step"><div class="no">3</div><div>
+    <h4>运行收集</h4>
+    <div class="code"><span class="cap">自动收集机场 → 注册 → 验活 → 转 3 种格式 → 上传 Gist</span>python subscribe/collect.py \
+  -g <span class="a">你的用户名/你的gist_id</span> \
+  -k <span class="a">ghp_你的令牌</span> \
+  -t clash v2ray singbox \
+  -f 50 -l 168 -d 5000</div>
+    <div class="why"><b>为什么</b> <code>-t</code> 指定输出格式;<code>-f 50</code> 只留剩余流量 ≥50GB 的套餐;<code>-l 168</code> 只留剩余时间 ≥7 天的;<code>-d 5000</code> 丢弃延迟高于 5 秒的节点——这三个参数决定拿到手的节点质量。</div>
+  </div></div>
+
+  <div class="step"><div class="no">4</div><div>
+    <h4>在客户端订阅</h4>
+    <p>打开你的 Gist 页面,找到生成的 <code>.yaml</code> / <code>.txt</code> 文件,点 <em>Raw</em> 拿到原始 URL,填入 Clash Verge / V2RayN / Shadowrocket 的订阅管理即可。</p>
+    <div class="why"><b>为什么</b> 客户端订阅的是 raw URL 而非网页地址——raw URL 返回纯文本本体,客户端才能解析。</div>
+  </div></div>
+
+  <h3><span class="idx">5.2</span>路线二 · process.py 完整流水线(长期自动化)</h3>
+
+  <div class="step"><div class="no">1</div><div>
+    <h4>复制默认配置作为起点</h4>
+    <div class="code">cp subscribe/examples/config.default.json my-config.json</div>
+    <div class="why"><b>为什么</b> 默认模板包含全部字段及注释位,先跑通再裁剪,比从零写少踩 90% 的坑。</div>
+  </div></div>
+
+  <div class="step"><div class="no">2</div><div>
+    <h4>填 sites:喂给它已知的好源</h4>
+    <div class="code"><span class="cap">有现成订阅就这样填(跳过注册,最省事)</span>{
+  <span class="k">"name"</span>: <span class="v">"my-airport"</span>,
+  <span class="k">"subscribe"</span>: [<span class="v">"https://xxx.com/api/v1/client/subscribe?token=..."</span>],
+  <span class="k">"push_to"</span>: [<span class="a">"free"</span>],
+  <span class="k">"include"</span>: <span class="v">"香港|新加坡|日本"</span>,
+  <span class="k">"exclude"</span>: <span class="v">"过期|官网|剩余"</span>,
+  <span class="k">"rate"</span>: <span class="v">2.0</span>
+}</div>
+    <div class="why"><b>为什么</b> <code>include</code>/<code>exclude</code> 在源头就过滤节点名,减少后续验活压力;<code>rate</code> 拦掉三倍率「刺客」节点。没有现成订阅就改填 <code>domain</code>,让注册器自动去注册领免费套餐。</div>
+  </div></div>
+
+  <div class="step"><div class="no">3</div><div>
+    <h4>配 crawl:打开你想要的爬取源</h4>
+    <div class="code"><span class="cap">第一次建议只开 Telegram + GitHub,稳定后再加</span><span class="k">"crawl"</span>: {
+  <span class="k">"enable"</span>: <span class="a">true</span>,
+  <span class="k">"telegram"</span>: { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"pages"</span>: <span class="v">3</span>,
+    <span class="k">"channels"</span>: { <span class="v">"某代理频道"</span>: { <span class="k">"push_to"</span>: [<span class="a">"free"</span>] } } },
+  <span class="k">"github"</span>:   { <span class="k">"enable"</span>: <span class="a">true</span>, <span class="k">"push_to"</span>: [<span class="a">"free"</span>] },
+  <span class="k">"google"</span>:   { <span class="k">"enable"</span>: <span class="a">false</span> }
+}</div>
+    <div class="why"><b>为什么</b> Google / Yandex 爬虫容易被验证码卡住,首跑就全开只会收获一屏报错;TG + GitHub 是产出最稳的两路。记得导出 <code>GH_TOKEN</code> 防 GitHub 限流。</div>
+  </div></div>
+
+  <div class="step"><div class="no">4</div><div>
+    <h4>配 groups:决定产出哪些格式</h4>
+    <div class="code"><span class="cap">groups 键名 = sites.push_to 里的分组名,要对应</span><span class="k">"groups"</span>: {
+  <span class="k">"free"</span>: {
+    <span class="k">"emoji"</span>: <span class="a">true</span>,
+    <span class="k">"targets"</span>: { <span class="k">"clash"</span>: <span class="a">"free-clash"</span>, <span class="k">"v2ray"</span>: <span class="a">"free-v2ray"</span> }
+  }
+}</div>
+    <div class="why"><b>为什么</b> targets 的键是 subconverter 的格式名,值是存储项键名——这就是 4.x 节说的「名字链条」中游,上下游必须同名。</div>
+  </div></div>
+
+  <div class="step"><div class="no">5</div><div>
+    <h4>配 storage:告诉它写到哪</h4>
+    <div class="code"><span class="cap">engine 选 gist,items 里为链条终点准备同名存储项</span><span class="k">"storage"</span>: {
+  <span class="k">"engine"</span>: <span class="a">"gist"</span>,
+  <span class="k">"items"</span>: {
+    <span class="k">"free-clash"</span>: { <span class="k">"username"</span>: <span class="v">"你"</span>, <span class="k">"gist_id"</span>: <span class="v">"..."</span>, <span class="k">"filename"</span>: <span class="v">"free.yaml"</span> },
+    <span class="k">"free-v2ray"</span>: { <span class="k">"username"</span>: <span class="v">"你"</span>, <span class="k">"gist_id"</span>: <span class="v">"..."</span>, <span class="k">"filename"</span>: <span class="v">"free-v2ray.txt"</span> }
+  }
+}</div>
+    <div class="why"><b>为什么</b> 一个 Gist 可容纳多个文件,按分组 × 格式各占一个文件即可;不想用云端就把 engine 换成 <code>local</code>,items 里填 <code>folder_id</code>/<code>file_id</code>。</div>
+  </div></div>
+
+  <div class="step"><div class="no">6</div><div>
+    <h4>设置凭证并小规模试跑</h4>
+    <div class="code"><span class="cap">先小线程、长超时,验证链路通,再上强度</span><span class="c"># Windows PowerShell</span>
+$env:PUSH_TOKEN=<span class="a">"ghp_你的令牌"</span>
+python subscribe/process.py -s my-config.json -n 16 -t 10000
+
+<span class="c"># Linux / macOS</span>
+export PUSH_TOKEN=ghp_你的令牌
+python subscribe/process.py -s my-config.json -n 16 -t 10000</div>
+    <div class="why"><b>为什么</b> 默认 64 线程对家宽与低配机器压力大,先 <code>-n 16 -t 10000</code>(10 秒超时)确认端到端能产出文件,再逐步加线程。常用参数:<code>--check</code> 只验活不推送、<code>-c/--flexible</code> 灵活邮箱注册、<code>--invisible</code> 隐藏进度条(适合日志环境)。</div>
+  </div></div>
+
+  <div class="step"><div class="no">7</div><div>
+    <h4>检查产出、客户端订阅</h4>
+    <p>打开 Gist,确认 <code>free.yaml</code> 等文件已被更新且含有效节点;复制 raw URL 到客户端订阅。节点名带 emoji、地区、倍率,来自 <code>rename</code> 与 <code>regularize</code> 归一化配置。</p>
+    <div class="why"><b>为什么</b> 验活只代表「运行那一刻能通」,免费节点衰减快,单次结果仅供验证链路,<em>持续可用靠第 8 步的定时调度</em>。</div>
+  </div></div>
+
+  <div class="step"><div class="no">8</div><div>
+    <h4>自动化:GitHub Actions 或本机定时</h4>
+    <div class="code"><span class="cap">仓库自带 .github/workflows/process.yaml,fork 后只需填 Secrets</span><span class="c"># Settings → Secrets and variables → Actions:</span>
+PUSH_TOKEN      = ghp_xxx           <span class="c"># secret</span>
+SUBSCRIBE_CONF  = https://.../my-config.json   <span class="c"># secret,配置可托管在私有 Gist</span>
+GH_TOKEN        = ghp_xxx           <span class="c"># 可选,提升爬虫额度</span>
+
+<span class="c"># 或者本机 crontab,每天 8:00 跑一次:</span>
+0 8 * * * cd /path/to/aggregator && PUSH_TOKEN=ghp_xxx python subscribe/process.py -s my-config.json</div>
+    <div class="why"><b>为什么</b> 配置文件放私有 Gist 用 raw URL 引用,敏感信息不进仓库;官方 workflow 每天定时触发(<code>cron 05 03/11 * * *</code>),订阅内容随之每日刷新,这就是「代理池」的自我维持。</div>
+  </div></div>
+
+  <h3><span class="idx">5.3</span>常见故障速查</h3>
+  <div class="grid g2">
+    <div class="card"><h5>配置校验失败</h5><p><code>python -m json.tool my-config.json</code> 先验 JSON 语法;再检查「名字链条」:sites.push_to → groups 键 → storage.items 键是否全部对得上。</p></div>
+    <div class="card"><h5>推送 401 / 无权限</h5><p>PUSH_TOKEN 过期或权限不足,Gist 需要 classic PAT 且勾选 gist scope;PasteGG 等同理检查各自 API Key。</p></div>
+    <div class="card"><h5>节点全军覆没</h5><p>先确认本机网络能直连测试 URL(<code>-u</code> 可自定义);再放宽 <code>-d</code> 延迟阈值、增大 <code>-t</code> 超时;确认没把 <code>SKIP_ALIVE_CHECK</code> 与过滤条件同时调得极严。</p></div>
+    <div class="card"><h5>GitHub 爬虫无产出</h5><p>大概率被限流:导出 <code>GH_TOKEN</code>;检查 <code>exclude_repos</code> 是否误杀;<code>WORKFLOW_MODE=1</code> 可单测爬取阶段。</p></div>
+  </div>
+
+  <div class="note warn">
+    <span class="nt">最后 · 使用边界</span>
+    本项目聚合的是公开渠道的免费资源,请遵守所在地区法律法规与目标服务条款;令牌等敏感凭证只放环境变量 / Actions Secrets,不要写进配置文件上传仓库;公共 Gist 内容所有人可见,勿在其中暴露个人信息。
+  </div>
+</div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <div>Aggregator 项目完全指南 · 基于仓库 README 与源码梳理 · 生成于 2026-10-02</div>
+    <div>入口:<code>subscribe/process.py</code> · <code>subscribe/collect.py</code> · 模板:<code>subscribe/examples/config.default.json</code></div>
+  </div>
+</footer>
+
+<script>
+  // ── 设计方向切换(3 方向:A 工程手册 / B 终端暖琥珀 / C 编辑部衬线)──
+  const themes = [
+    { id: 'a', label: '方向 A · 工程手册' },
+    { id: 'b', label: '方向 B · 终端暖琥珀' },
+    { id: 'c', label: '方向 C · 编辑部衬线' }
+  ];
+  const btn = document.getElementById('themeBtn');
+  let idx = 0;
+  function apply(i) {
+    idx = i;
+    const t = themes[i];
+    if (t.id === 'a') document.documentElement.removeAttribute('data-theme');
+    else document.documentElement.setAttribute('data-theme', t.id);
+    btn.textContent = t.label;
+    try { localStorage.setItem('ag-guide-theme', t.id); } catch (e) {}
+  }
+  btn.addEventListener('click', () => apply((idx + 1) % themes.length));
+  try {
+    const saved = localStorage.getItem('ag-guide-theme');
+    const i = themes.findIndex(t => t.id === saved);
+    if (i > 0) apply(i);
+  } catch (e) {}
+
+  // ── 目录 scrollspy ──
+  const links = document.querySelectorAll('nav.toc-inline a');
+  const secs = [...links].map(a => document.querySelector(a.getAttribute('href')));
+  const spy = new IntersectionObserver(entries => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        links.forEach(l => l.classList.toggle('active',
+          l.getAttribute('href') === '#' + en.target.id));
+      }
+    });
+  }, { rootMargin: '-30% 0px -60% 0px' });
+  secs.forEach(s => s && spy.observe(s));
+</script>
+</body>
+</html>
