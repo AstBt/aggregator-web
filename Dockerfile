@@ -4,14 +4,14 @@ FROM python:3.12.3-slim
 
 LABEL maintainer="wzdnzd"
 
-# github personal access token
-ENV GIST_PAT=""
+# token for storage backend, e.g. github personal access token
+ENV PUSH_TOKEN=""
 
-# github gist info, format: username/gist_id
-ENV GIST_LINK=""
+# process config file path or remote url
+ENV SUBSCRIBE_CONF=""
 
-# customize airport listing url address
-ENV CUSTOMIZE_LINK=""
+# github token for code search crawler
+ENV GH_TOKEN=""
 
 # pip default index url
 ARG PIP_INDEX_URL="https://pypi.org/simple"
@@ -33,4 +33,4 @@ RUN rm -rf subconverter/subconverter-darwin-amd \
 RUN pip install -i ${PIP_INDEX_URL} --no-cache-dir -r requirements.txt
 
 # start and run
-CMD ["python", "-u", "subscribe/collect.py", "--all", "--overwrite", "--skip"]
+CMD ["python", "-u", "subscribe/process.py", "--overwrite"]
