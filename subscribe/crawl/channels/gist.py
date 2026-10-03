@@ -43,7 +43,8 @@ def search_gists(cookie: str, patterns: list[tuple[str, ...]], pages: int, max_g
         if not query:
             continue
         for page in range(1, max(1, pages) + 1):
-            url = f"{GIST_SEARCH}?q={urllib.parse.quote(query, safe='')}&p={page}"
+            # 按最近更新排序(s=updated&o=desc),订阅源时效性优先
+            url = f"{GIST_SEARCH}?q={urllib.parse.quote(query, safe='')}&s=updated&o=desc&p={page}"
             content = utils.http_get(url=url, headers=headers, timeout=20)
             if utils.isblank(content):
                 break
