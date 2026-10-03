@@ -133,4 +133,4 @@ cache.db
 config.yaml
 generate.ini
 config.json
-config.local.json
+config.local.json.playwright-cli/
