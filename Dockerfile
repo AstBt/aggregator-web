@@ -33,4 +33,5 @@ RUN rm -rf subconverter/subconverter-darwin-amd \
 RUN pip install -i ${PIP_INDEX_URL} --no-cache-dir -r requirements.txt
 
 # start and run
-CMD ["python", "-u", "subscribe/process.py", "--overwrite"]
+# 不加 --overwrite: 上一轮发布文件里的存活节点会随 remains 机制重新参与验活, 与爬取结果合并去重
+CMD ["python", "-u", "subscribe/process.py"]

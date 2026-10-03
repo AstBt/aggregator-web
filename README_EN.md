@@ -1565,7 +1565,7 @@ python subscribe/process.py \
 
 - `-f, --flexible`: Use Gmail aliases for registration
 
-- `-o, --overwrite`: Exclude remaining proxies from previous runs
+- `-o, --overwrite`: Exclude nodes from the previous run's published files. **Not set by default**: previous nodes re-enter liveness checks via the remains mechanism, so nodes that were alive yesterday but were not crawled today are not lost. Add it only when you want "this run's results only".
 
 - `-i, --invisible`: Hide progress indicators
 

@@ -47,8 +47,9 @@ jobs:
       - name: Install
         run: pip3 install -r requirements.txt
 
+      # 不加 --overwrite: 上轮已发布节点随 remains 机制重新验活, 避免昨天存活、今天未被爬到的节点丢失
       - name: Process
-        run: python -u subscribe/process.py --overwrite
+        run: python -u subscribe/process.py
 
       - name: Timestamp
         run: date

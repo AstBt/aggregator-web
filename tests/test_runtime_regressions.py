@@ -270,5 +270,58 @@ class PublicationTests(unittest.TestCase):
         self.assertEqual(command.call_args.kwargs["cwd"], subconverter.getpath())
 
 
+class PoolRecycleTests(unittest.TestCase):
+    def config_with(self, *subs):
+        item = StorageItem(username="test", gist_id="id", filename="pool.json")
+        return ProcessConfig(
+            storage=StorageConfig(engine="gist", token="dummy", items={"pool": item}),
+            crawl=CrawlConfig(persist=CrawlPersist(subscribe="pool")),
+            sites=[SiteConfig(name=f"s{i}", nodes=NodeInput(subscribe=sub), push_to=["free"]) for i, sub in enumerate(subs)],
+        )
+
+    def test_recycled_pool_entries_keep_group_assignment(self):
+        """旧池 URL 无 push_to 时必须回落到 crawl.task.push_to, 否则节点无法参与分组验活"""
+        old_url = "https://old.example.com/sub?token=abcdef0123456789"
+        empty = MagicMock()
+        empty.crawl.return_value = ChannelResult()
+        with patch.dict(engine.CHANNELS, {name: empty for name in engine.CHANNELS}), \
+             patch("crawl.engine.load_records", return_value={old_url: {"origin": "GIST", "push_to": []}}), \
+             patch("utils.multi_thread_run", return_value=[(True, False)]) as validator:
+            sites = engine.run(
+                CrawlConfig(persist=CrawlPersist(subscribe="pool"), task=TaskParams(push_to=["free"])),
+                storage=self.config_with(old_url).storage,
+                display=False,
+            )
+        self.assertEqual([s.nodes.subscribe for s in sites], [old_url])
+        self.assertEqual(sites[0].push_to, ["free"])
+        tasks = validator.call_args.kwargs["tasks"]
+        self.assertIn([old_url, 2, 5, 12, 72], tasks)
+
+    def test_new_and_old_urls_are_deduped_before_validation(self):
+        shared = "https://shared.example.com/sub?token=abcdef0123456789"
+        result = ChannelResult()
+        result.add_subscribe(shared, "GITHUB", TaskParams(push_to=["free"]))
+        channel = MagicMock()
+        channel.crawl.return_value = result
+        with patch.dict(engine.CHANNELS, {"github": channel}), \
+             patch("crawl.engine.load_records", return_value={shared: {"origin": "GIST", "push_to": ["free"]},
+                                                              "https://stale.example.com/sub?token=abcdef0123456789": {"origin": "GIST", "push_to": ["free"]}}), \
+             patch("utils.multi_thread_run", return_value=[(True, False), (True, False)]) as validator:
+            engine.run(CrawlConfig(persist=CrawlPersist(subscribe="pool")), storage=self.config_with(shared).storage, display=False)
+        urls = [task[0] for task in validator.call_args.kwargs["tasks"]]
+        self.assertEqual(sorted(set(urls)), sorted(urls), "同一 URL 不应重复验证")
+        self.assertIn(shared, urls)
+        self.assertIn("https://stale.example.com/sub?token=abcdef0123456789", urls)
+
+    def test_recycled_url_surviving_liveness_re_enters_pool(self):
+        """端到端语义: 旧池 URL 经回收后被验活, 必须能重新发布回订阅池"""
+        backend = push.PushToGist("dummy")
+        alive = "https://old.example.com/sub?token=abcdef0123456789"
+        with patch.object(backend, "push_to", return_value=True) as publish, patch("utils.http_get", side_effect=AssertionError("no read-back")):
+            workflow.filter_pool(self.config_with(alive), backend, {alive})
+        import json
+        self.assertEqual(set(json.loads(publish.call_args.kwargs["content"])), {alive})
+
+
 if __name__ == "__main__":
     unittest.main()

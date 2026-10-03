@@ -1160,7 +1160,7 @@ python subscribe/process.py \
 - `-t, --timeout`: 超时时间，毫秒（默认：5000）
 - `-c, --check`: 仅检查代理活性，不处理
 - `-f, --flexible`: 使用 Gmail 别名进行注册
-- `-o, --overwrite`: 排除之前运行的剩余代理
+- `-o, --overwrite`: 排除上一轮已发布文件中的节点。<strong>默认不加</strong>:上一轮文件里的节点会随 remains 机制重新参与验活,避免昨天存活、今天未被爬到的节点丢失;需要"只用本轮新结果"时再加
 - `-i, --invisible`: 隐藏进度指示器
 
 #### 爬虫模块 (`crawl.py`)

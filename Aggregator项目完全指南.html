@@ -572,6 +572,17 @@
   }
 }</div>
 
+  <div class="note">
+    <span class="nt">配置无歧义 · 旧内容如何处理:默认「回收」,-o 才「只用新的」</span>
+    命令行<strong>默认不加 <code>--overwrite</code></strong>(Dockerfile 与官方 workflow 也已改为默认)。此时上一轮发布到 Gist 的文件不会被丢弃,而是被当作一个新的“订阅源”拉回来:<strong>新旧 URL/节点先去重 → 一起过订阅层验证 → 一起过节点层验活</strong>,存活的旧节点会出现在新文件里,死掉的自然淘汰。只有加 <code>-o/--overwrite</code> 才是“本轮结果整体替换”。<br><br>
+    <strong>举例</strong>:昨天文件里有 41 个存活节点;今天只爬到 12 个新节点。不加 <code>-o</code>:昨天的 41 个 + 今天的 12 个一起去重验活,假设 20 个旧 + 8 个新存活 → 新文件含 28 个。加 <code>-o</code>:新文件只可能含今天这 12 个里存活的(8 个),昨天那 20 个活着的节点<em>直接消失</em>。定时任务追求“池子只增不减”,就用默认。
+  </div>
+
+  <div class="note">
+    <span class="nt">crawled-proxies.json(节点快照)有什么用?可以不要吗?</span>
+    它是上轮<strong>验活存活节点</strong>的原始 YAML 列表。三个用途:① <strong>审计</strong>——不用翻 Clash 配置就知道上轮具体哪些节点活过、延迟多少;② <strong>给外部工具消费</strong>——Base64/URI 形态可直接喂给自建脚本或其他客户端;③ <strong>调试对照</strong>——和分组文件对比,确认“发布内容 = 验活结果”。<br>
+    对纯订阅用户确实用处不大,而且它是<strong>可选配置</strong>:把 <code>crawl.persist.nodes</code> 改成空字符串(或从 <code>storage.items</code> 删掉对应项)即可彻底关闭推送,不影响任何其他行为。<strong>注意</strong>:它是纯输出,没有任何机制会把它读回重新验活——关心旧节点持续可用性靠的是上面的 remains 回收。
+  </div>
   <h3><span class="idx">4.6</span>结果以什么形式存在</h3>
   <ul style="padding-left:20px; max-width:75ch; color:var(--ink-2)">
     <li style="margin-bottom:8px"><strong>每个「分组 × 格式」一个文件</strong>:如 <code>free-clash</code> 产出 Clash YAML、<code>free-v2ray</code>(mixed)产出 Base64 订阅文本、<code>free-singbox</code> 产出 JSON。文件名由 <code>storage.items</code> 里该 item 的 <code>filename</code> 决定,与格式<em>不一定</em>同名。</li>
@@ -706,6 +717,7 @@ GH_COOKIE       = xxx               <span class="c"># 可选,gist 网页搜索�
     <div class="card"><h5>抓取 0 产出≠源失效</h5><p>看每个源的计数行:TG 现在按频道打印 <code>pages=..., nodes=...</code>,能区分「抓到 5 页 280 个节点」和「频道_page 请求失败」。<strong>实例</strong>:早期版本用 t.me 首页一次探测失败就跳过全部频道,实际各频道页面都是通的。</p></div>
     <div class="card"><h5>推送 422 / 空文件</h5><p>Gist 返回 <code>missing_field: files</code> 通常是转换产物为空(如 v2ray 目标对某些节点组合产出 0 字节)。现在空产物直接拒绝推送并 <code>[ConvertError] empty output</code>,Gist 保留旧文件。把 target 换成 <code>mixed</code> 即可。</p></div>
     <div class="card"><h5>订阅池「删了又回来」</h5><p>旧链路每个环节都从远端读回再整池覆写,Gist raw 的 CDN 缓存(约 5 分钟)会把删除项带回来。现在池子由<strong>本轮内存状态一次性发布</strong>,看到 <code>published verified subscription pool: kept=N</code> 就是权威数字。</p></div>
+    <div class="card"><h5>昨天活着的节点今天消失了</h5><p>如果你用了 <code>--overwrite</code>(或用了旧版 Docker 镜像),上一轮文件里的节点<strong>不会</strong>被回收重验,只有本轮新爬到的参与——昨天存活的节点若今天没被任何源抓到就会丢掉。新版 Dockerfile / workflow 已默认不加该参数;本机手动跑也请不要加。<strong>实例</strong>:自由节点衰减快,取消回收后连续几轮文件节点数可能不升反降。</p></div>
     <div class="card"><h5>配置校验失败</h5><p><code>python -m json.tool my-config.json</code> 先验 JSON 语法;再检查「名字链条」:sites.push_to → groups 键 → storage.items 键是否全部对得上。</p></div>
   </div>
 

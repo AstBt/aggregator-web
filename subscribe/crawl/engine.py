@@ -202,10 +202,12 @@ def run(
         if not _usable_subscribe(url, config.exclude):
             stale_keys.append(raw_url)
             continue
+        # 回收条目若缺失分组信息则回落到全局任务参数, 保证旧池 URL 的节点能重新参与分组验活
+        recycled_push_to = list(meta.get("push_to", []) or []) or list(config.task.push_to or [])
         result.add_subscribe(
             url,
             meta.get("origin", Origin.TEMPORARY.name),
-            TaskParams(push_to=list(meta.get("push_to", []))),
+            TaskParams(push_to=recycled_push_to),
             skip_cache=bool(meta.get("skip_cache", False)),
             allow_nonstandard=bool(meta.get("allow_nonstandard", False)),
             errors=int(meta.get("errors", 0) or 0),
