@@ -331,17 +331,22 @@
   <p class="lead">免费代理散落在各处:Telegram 频道里的一条条订阅链接、GitHub 代码仓库里的节点分享、机场网站的免费套餐。手动收集费时费力、质量参差、隔天就失效。Aggregator 把「找 → 验 → 洗 → 转 → 存」整条链路自动化,产出<em>稳定更新、格式齐全、按质分组</em>的订阅源。</p>
 
   <div class="grid g3">
-    <div class="card"><h5>🕷 多源爬取</h5><p>Telegram 频道、GitHub 代码与 Issues、Google / Yandex 搜索、Twitter 时间线、任意网页、机场自动注册、自定义 Python 脚本插件,七类来源统一调度。</p></div>
-    <div class="card"><h5>🔍 智能验证</h5><p>用内置 Clash / mihomo 内核真实拨号测试每个节点:活性、延迟、倍率、落地位置,不合格的直接丢弃——「能连上」才叫代理。</p></div>
-    <div class="card"><h5>🔄 格式转换</h5><p>通过内置 subconverter 把同一份节点池转换为 Clash、V2Ray、SingBox 等格式,一次运行,多客户端通用。</p></div>
+    <div class="card"><h5>🕷 多源爬取</h5><p>Telegram 频道、GitHub 多模式代码/Issues 搜索、Gist 网页搜索、Google / Yandex 搜索、任意网页、自定义 Python 脚本插件,统一调度。</p></div>
+    <div class="card"><h5>🔍 两层验证</h5><p><strong>订阅层</strong>:HTTP 拉取订阅链接,按流量余量/有效期门槛筛选;<strong>节点层</strong>:内置 mihomo 内核真实拨号测延迟。两层都通过才推送——「订阅能打开」和「节点能上网」是两件事。</p></div>
+    <div class="card"><h5>🌐 本地代理友好</h5><p>配置 <code>crawl.proxy</code> 后:探活通过则所有出网请求优先走代理,代理传输失败自动回退直连;连本机控制器(127.0.0.1)的请求<em>永远直连</em>,不被代理转发。</p></div>
+    <div class="card"><h5>🔄 格式转换</h5><p>通过内置 subconverter 把同一份节点池转换为 Clash、mixed(Base64 订阅)、SingBox 等格式;转换结果为空时<em>保留远端旧文件</em>并明确报错,不会把空内容推上去。</p></div>
     <div class="card"><h5>💾 灵活存储</h5><p>结果推送到 GitHub Gist、PasteGG 等云端剪贴板,得到稳定的订阅 URL;也可存本地文件,完全自主。</p></div>
-    <div class="card"><h5>🔌 插件系统</h5><p>爬不到的地方?在 <code class="code-inline">crawl/scripts</code> 下写一个实现 <code class="code-inline">parse() / run()</code> 的 Python 插件即可接入流水线。</p></div>
     <div class="card"><h5>🏷 分组管理</h5><p>不同来源的节点可打上不同标签推送到不同分组(如 premium / free / backup),每组独立转换、独立存储。</p></div>
   </div>
 
   <div class="note">
     <span class="nt">举例 · 一句话理解</span>
     你在客户端里填一个 Gist 订阅 URL,每天早上自动多出几十个「昨天验证还活着」的免费节点——这背后就是 Aggregator 定时跑完一整趟流水线的结果。
+  </div>
+
+  <div class="note warn">
+    <span class="nt">关键认知 · 两种「不可用」不是一回事</span>
+    <strong>订阅不可用</strong>(来源挂/流量耗尽/cookie 失效)是数据问题,该订阅被丢弃或冷却;而<strong>控制器不可用</strong>(mihomo 没起来/端口冲突)是验活设施问题——此时节点既没被判活也没被判死,程序会跳过发布并保留 Gist 上的旧文件,<em>不会</em>把几百个节点误判成全灭、更不会清空订阅池。日志里看到 <code>ControllerError</code> 或 <code>controller did not become ready</code>,先查验活环境,别怀疑节点。
   </div>
 </div>
 </section>
@@ -350,20 +355,20 @@
 <section id="arch">
 <div class="wrap">
   <div class="sec-tag">02 / ARCHITECTURE</div>
-  <h2>设计架构:五段流水线 + 两个入口</h2>
+  <h2>设计架构:五段流水线,一个入口</h2>
   <p class="lead">整个项目是一条单向数据流水线:爬取源产出原始订阅链接,逐级加工为可用节点,最终推送到存储。所有模块都在 <code>subscribe/</code> 目录下,纯 Python 实现,Clash 与 subconverter 以<em>预编译二进制</em>形式内置,开箱即用。</p>
 
   <div class="pipe-legend"><i style="background:var(--ink-2)"></i>数据来源<i style="background:var(--accent)"></i>加工环节</div>
   <div class="pipeline">
-    <div class="pipe-node src"><div class="t">① 爬取 Crawl</div><div class="d">TG / GitHub / Gist / Google / Yandex / 页面 / 脚本 → 提取订阅链接</div></div>
+    <div class="pipe-node src"><div class="t">① 爬取 Crawl</div><div class="d">TG / GitHub / Gist / Google / Yandex / 页面 / 脚本 → 提取订阅链接与散节点</div></div>
     <div class="pipe-arrow">→</div>
     <div class="pipe-node mid"><div class="t">② 注册 Airport</div><div class="d">对机场站自动注册账号、领免费套餐、换取订阅(airport.py)</div></div>
     <div class="pipe-arrow">→</div>
-    <div class="pipe-node mid"><div class="t">③ 聚合 + 验活 Clash</div><div class="d">生成临时 Clash 配置,内核真实连通测试,按延迟 / 倍率过滤(clash.py)</div></div>
+    <div class="pipe-node mid"><div class="t">③ 聚合 + 验活 Clash</div><div class="d">独立端口控制器,内核真实连通测试,按延迟 / 倍率过滤(clash.py)</div></div>
     <div class="pipe-arrow">→</div>
-    <div class="pipe-node mid"><div class="t">④ 转换 Subconverter</div><div class="d">按分组转换为 clash / v2ray / singbox 等格式(subconverter.py)</div></div>
+    <div class="pipe-node mid"><div class="t">④ 转换 Subconverter</div><div class="d">按分组转换为 clash / mixed / singbox 等格式;空产物拒绝推送(subconverter.py)</div></div>
     <div class="pipe-arrow">→</div>
-    <div class="pipe-node mid"><div class="t">⑤ 推送 Push</div><div class="d">上传到 Gist / PasteGG / 本地等后端,产出订阅 URL(push.py)</div></div>
+    <div class="pipe-node mid"><div class="t">⑤ 推送 Push</div><div class="d">仅推送验活后确认可用的来源,一次内存写入订阅池(push.py)</div></div>
   </div>
 
   <h3><span class="idx">2.1</span>核心模块一览(目录对应)</h3>
@@ -409,7 +414,16 @@
 
   <div class="note">
     <span class="nt">举例 · 选型判断</span>
-    现在只有一条路:写好 <code>crawl</code>(TG 频道列表 + GitHub 多模式 + Gist 扫描)——3-4 步就能让 proxy 池自我维持。
+    现在只有一条路:写好 <code>crawl</code>(TG 频道列表 + GitHub 多模式 + Gist 扫描 + 本地代理)——4 步就能让代理池自我维持。
+  </div>
+
+  <h3><span class="idx">2.3</span>本次重构新增的两个模块</h3>
+  <div class="tbl-scroll">
+  <table>
+    <tr><th>模块文件</th><th>职责</th><th>解决的问题</th></tr>
+    <tr><td><code>subscribe/httpclient.py</code></td><td>出网请求的统一出口:代理优先、失败回退直连、localhost 强制直连</td><td>原先代理只在部分路径生效且会错误转发本机控制器请求,导致大批节点被误判</td></tr>
+    <tr><td><code>tests/test_runtime_regressions.py</code></td><td>27 项离线回归测试(路由/探活/验活分类/发布)</td><td>把「代理 403 判可用」「控制器断开≠节点死亡」「订阅池一次写入」等关键行为固化为测试,防回归</td></tr>
+  </table>
   </div>
 </div>
 </section>
@@ -482,12 +496,12 @@
     <tr><th>变量</th><th>必填?</th><th>用于</th><th>说明</th></tr>
     <tr><td><code>PUSH_TOKEN</code></td><td><span class="pill req">process.py 必需</span></td><td>存储推送</td><td>存储服务的访问令牌;engine 为 gist 时即 GitHub PAT(需 gist 权限)</td></tr>
     <tr><td><code>SUBSCRIBE_CONF</code></td><td><span class="pill req">或用 -s 指定</span></td><td>process.py</td><td>配置文件路径或远程 URL;两者给其一即可</td></tr>
-    <tr><td><code>PUSH_TOKEN</code></td><td><span class="pill req">process.py 必需</span></td><td>两者</td><td>存储服务访问令牌;也可读公开 gist(兼作 GH_TOKEN 兜底)</td></tr>
     <tr><td><code>GH_TOKEN</code></td><td><span class="pill opt">可选 · 强烈推荐</span></td><td>GitHub/Gist 爬虫</td><td>无 scope 即可读公开 gist 与搜索 API,防限流;也可写进 .env</td></tr>
     <tr><td><code>LOCAL_BASEDIR</code></td><td><span class="pill opt">可选</span></td><td>本地存储</td><td>本地存储引擎的输出根目录,不设则相对项目根</td></tr>
     <tr><td><code>WORKFLOW_MODE</code></td><td><span class="pill opt">可选</span></td><td>process.py</td><td><code>0</code> 爬取+聚合(默认) / <code>1</code> 仅爬取 / <code>2</code> 仅聚合</td></tr>
-    <tr><td><code>SKIP_ALIVE_CHECK</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td><code>true</code> 跳过验活,速度换质量</td></tr>
-    <tr><td><code>SKIP_REMARK</code> / <code>ENABLE_SPECIAL_PROTOCOLS</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td>跳过备注更新 / 启用 VLESS、Hysteria2 等特殊协议</td></tr>
+    <tr><td><code>SKIP_ALIVE_CHECK</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td><code>true</code> 跳过节点验活。<strong>跳过时不发布任何节点文件、不清订阅池</strong>——只适合调试采集,正式运行留 false</td></tr>
+    <tr><td><code>SKIP_REMARK</code> / <code>ENABLE_SPECIAL_PROTOCOLS</code></td><td><span class="pill opt">可选</span></td><td>两者</td><td>跳过远端配置 remark 更新 / 启用 VLESS、Hysteria2 等特殊协议</td></tr>
+    <tr><td><code>GH_COOKIE</code></td><td><span class="pill opt">可选</span></td><td>Gist 搜索</td><td>GitHub 网页登录态(<code>user_session</code> 值);配了才启用 Gist 网页搜索模式,不配则退回时间线扫描</td></tr>
   </table>
   </div>
 
@@ -495,10 +509,30 @@
   <div class="grid g2">
     <div class="card"><h5>Telegram 频道</h5><p><code>telegram.channels</code> 里按频道名配置(支持任意公开频道,频道名即键),每个频道可配 include / exclude 关键词与 push_to 分组,靠公共频道网页版翻页爬取,无需 TG 账号。</p></div>
     <div class="card"><h5>GitHub</h5><p><code>github.push_to</code> 必填;内置 3 组搜索模式(v2board 精确 / 泛化 token / sspanel 短链),代码 + Issues 双通道;<code>patterns</code> 可自定义扩展。配合 <code>GH_TOKEN</code> 防限流。</p></div>
-    <div class="card"><h5>Gist 公开时间线</h5><p>GitHub 无 Gist 搜索 API,本源扫描 <code>/gists/public</code> 最近公开 Gist,从文件内容提取订阅;<code>GH_TOKEN</code> 或 <code>PUSH_TOKEN</code> 都能读,无需额外权限。</p></div>
+    <div class="card"><h5>Gist 源(双模式)</h5><p>配了 <code>GH_COOKIE</code> 走<strong>网页搜索</strong>(按 Recently updated 排序,实测 36 个 gist→133 条订阅);没配则退回<strong>公开时间线</strong>扫描(<code>/gists/public</code>,命中率低)。<code>patterns</code>/<code>pages</code>/<code>max_gists</code> 可调;读取内容用 <code>GH_TOKEN</code> 或 <code>PUSH_TOKEN</code> 均可,无需额外权限。</p></div>
     <div class="card"><h5>Google / Yandex 搜索</h5><p>默认关闭,设 <code>"enable": true</code> 打开;适合补充冷门源,但验证码风险高,建议给 <code>exclude_sites</code> 拉黑名单。</p></div>
-    <div class="card"><h5>本地代理 proxy</h5><p>探活通过后置入 <code>HTTP(S)_PROXY</code>,<strong>所有</strong>爬取(GitHub/Gist/TG/页面)与订阅验证均优先走代理;订阅验证直连失败也会再走一次代理复验。</p></div>
+    <div class="card"><h5>本地代理 proxy</h5><p>配置项三项:<code>enable</code> 开关、<code>address</code> 代理地址(如 <code>http://127.0.0.1:7897</code>)、<code>test_url</code> 探活地址。启用后:<strong>爬取与订阅验证优先走代理</strong>,代理传输失败自动回退直连;<strong>本机控制器请求(127.0.0.1)强制直连</strong>。详见下一节的探活规则。</p></div>
     <div class="card"><h5>自定义页面 / 脚本插件</h5><p>pages 支持 <code>{page}</code> 占位符批量翻页;scripts 指定 <code>plugin</code> 执行自写 Python 插件,任何「要登录 / 要签名」的站点都能接。</p></div>
+  </div>
+
+  <div class="note">
+    <span class="nt">配置无歧义 · crawl.proxy 三个字段怎么填</span>
+    <table style="margin:8px 0 0; background:transparent; border:none">
+      <tr><th style="border:none; background:transparent">字段</th><th style="border:none; background:transparent">填什么</th></tr>
+      <tr><td style="border:none"><code>enable</code></td><td style="border:none"><code>true</code>/<code>false</code>。关掉后一切走直连,即使你本机有代理</td></tr>
+      <tr><td style="border:none"><code>address</code></td><td style="border:none">本地代理的 HTTP 入口,必须带 <code>http://</code> 或 <code>https://</code>。Clash Verge 默认混合端口多为 <code>http://127.0.0.1:7897</code>,v2rayN 多为 <code>http://127.0.0.1:10809</code></td></tr>
+      <tr><td style="border:none"><code>test_url</code></td><td style="border:none">一个「代理正常情况下应该能访问」的地址。<strong>它会返回 200/3xx,或者 401/403/429(被拒但链路通),都算代理可用</strong>;默认 <code>https://api.github.com/zen</code></td></tr>
+    </table>
+  </div>
+
+  <div class="note warn">
+    <span class="nt">举例 · 探活地址选错的坑(真实发生过)</span>
+    早期把 <code>test_url</code> 设成 <code>https://www.google.com/generate_204</code>:代理转发正常,但该地址返回的是 <strong>204</strong>,被程序当成「非 200 = 代理不可用」,于是每次启动都打印 <code>local proxy ... unreachable, fallback disabled</code>——代理明明开着却整个关闭了回退。另一例:用 <code>api.github.com/zen</code> 时代理节点返回 <strong>403</strong>,同样被误判。现在两种状态都被正确识别为「代理可用」。<strong>选 test_url 的原则:挑一个代理通时一定返回 200 的稳定地址</strong>(如 <code>https://api.github.com/zen</code> 或 <code>https://www.gstatic.com/generate_204</code>)。
+  </div>
+
+  <div class="note warn">
+    <span class="nt">举例 · 为什么本机控制器必须强制直连</span>
+    mihomo 内核只监听 <code>127.0.0.1:9090</code>。旧版代码用统一的 urlopen 请求它,而这个请求被 <code>HTTP_PROXY</code> 环境变量一起转发到了你的代理软件——代理没有 9090 这个上游,返回 502,程序把 502 当成「节点延迟测试失败」:<strong>357 个节点全部误判为死亡</strong>,但同一批节点用直连复测 21/21 存活。现在 <code>httpclient</code> 对 127.0.0.1/localhost 的请求一律绕过代理,这类「全灭误报」不会再把可用节点和订阅池清空。
   </div>
 
   <h3><span class="idx">4.4</span>sites 站点配置要点</h3>
@@ -511,7 +545,7 @@
     <tr><td><code>include</code> / <code>exclude</code></td><td><span class="pill opt">可选</span></td><td>""</td><td>正则过滤节点名,如 <code>"香港|新加坡"</code> / <code>"过期|官网"</code></td></tr>
     <tr><td><code>rename</code></td><td><span class="pill opt">可选</span></td><td>""</td><td>重命名模板,<code>"🇭🇰 {name}"</code> 中 <code>{name}</code> 是原节点名</td></tr>
     <tr><td><code>rate</code></td><td><span class="pill opt">可选</span></td><td>2.5</td><td>最大流量倍率,超过即丢弃(机场「三倍流量」节点克星)</td></tr>
-    <tr><td><code>check_alive</code></td><td><span class="pill opt">可选</span></td><td>true</td><td>是否参与 Clash 验活</td></tr>
+    <tr><td><code>check_alive</code></td><td><span class="pill opt">可选</span></td><td>true</td><td>是否参与 Clash 验活。设 <code>false</code> 的节点<strong>不测活也不发布</strong>——避免把未经确认的节点推给客户端</td></tr>
     <tr><td><code>count</code> / <code>coupon</code></td><td><span class="pill opt">可选</span></td><td>2 / ""</td><td>自动注册的账号数与注册优惠码</td></tr>
   </table>
   </div>
@@ -540,11 +574,17 @@
 
   <h3><span class="idx">4.6</span>结果以什么形式存在</h3>
   <ul style="padding-left:20px; max-width:75ch; color:var(--ink-2)">
-    <li style="margin-bottom:8px"><strong>每个「分组 × 格式」一个文件</strong>:如 <code>premium-clash</code> 产出 Clash YAML、<code>free-v2ray</code> 产出 Base64 订阅文本、<code>singbox</code> 产出 JSON。</li>
+    <li style="margin-bottom:8px"><strong>每个「分组 × 格式」一个文件</strong>:如 <code>free-clash</code> 产出 Clash YAML、<code>free-v2ray</code>(mixed)产出 Base64 订阅文本、<code>free-singbox</code> 产出 JSON。文件名由 <code>storage.items</code> 里该 item 的 <code>filename</code> 决定,与格式<em>不一定</em>同名。</li>
     <li style="margin-bottom:8px"><strong>云端后端 → 订阅 URL</strong>:推送到 Gist 后,该文件的 <em>raw URL</em> 就是订阅地址,直接填进 Clash / V2RayN / Shadowrocket 等客户端。</li>
     <li style="margin-bottom:8px"><strong>本地后端 → 文件树</strong>:<code>&lt;LOCAL_BASEDIR&gt;/&lt;folder_id&gt;/&lt;file_id&gt;</code>,如 <code>output/premium/clash.yaml</code>。</li>
-    <li><strong>附加持久化</strong>:<code>crawl.persist</code> 指定的存储项(默认 <code>crawledsubs</code> / <code>crawledproxies</code>)保存订阅池与节点快照 JSON,供下次增量复用;其中 <strong>订阅池只回写验活后确认产出过存活节点的订阅</strong>。</li>
+    <li><strong>订阅池(仅存可用来源)</strong>:<code>crawl.persist.subscribe</code>(默认 <code>crawledsubs</code>)保存的 JSON <em>只包含本轮验活确认产出过存活节点的订阅 URL</em>;每一轮用<strong>内存中的本轮结果一次性写入</strong>,不再先从远端读回再覆写(旧实现读回 Gist CDN 缓存会把刚删掉的失效订阅又写回去)。若本轮验活因控制器故障中断,则<strong>整池保持不动</strong>并保留旧文件。</li>
+    <li style="margin-top:8px"><strong>节点快照(仅存存活节点)</strong>:<code>crawl.persist.nodes</code>(默认 <code>crawledproxies</code>)保存的 YAML 只包含<em>验活通过</em>的节点,重复节点会自动合并并保留全部来源订阅记录。</li>
   </ul>
+
+  <div class="note warn">
+    <span class="nt">举例 · mixed 与 v2ray 的差异(选错会推出空文件)</span>
+    同一批节点(假定 41 个:31 个 trojan/vless + 10 个 HTTP):<code>clash</code> 输出 41 条完整节点; <code>mixed</code>(Base64 订阅)输出 <strong>31 条</strong>——因为 HTTP 代理无法用「节点链接」形式表达,这是格式本身的限制,不是丢节点;而 <code>v2ray</code> 目标在内置 subconverter 上可能产出 <strong>0 字节</strong>。现在空产物会被直接拒绝上传(日志 <code>[ConvertError] empty output</code>),Gist 上保留的是上一次的好文件,而不是空文件或 422 报错。<strong>实践中把 <code>groups.targets</code> 配成 <code>"mixed"</code> 而非 <code>"v2ray"</code></strong>。
+  </div>
 </div>
 </section>
 
@@ -553,7 +593,7 @@
 <div class="wrap">
   <div class="sec-tag">05 / HOW-TO</div>
   <h2>最佳实践:一步一步跑通</h2>
-  <p class="lead">项目现在只有 <strong>process.py</strong> 一个入口。按下面 8 步操作,一次搭好可持续自动更新的代理池。每一步都标注了「为什么」。</p>
+  <p class="lead">项目现在只有 <strong>process.py</strong> 一个入口。按下面 9 步操作,一次搭好可持续自动更新的代理池。每一步都标注了「为什么」。</p>
 
   <h3><span class="idx">5.1</span>标准实践 · process.py 完整流水线(长期自动化)</h3>
 
@@ -623,33 +663,50 @@ python subscribe/process.py -s my-config.json -n 16 -t 10000
 <span class="c"># Linux / macOS</span>
 export PUSH_TOKEN=ghp_你的令牌
 python subscribe/process.py -s my-config.json -n 16 -t 10000</div>
-    <div class="why"><b>为什么</b> 默认 64 线程对家宽与低配机器压力大,先 <code>-n 16 -t 10000</code>(10 秒超时)确认端到端能产出文件,再逐步加线程。常用参数:<code>--check</code> 只验活不推送、<code>-c/--flexible</code> 灵活邮箱注册、<code>--invisible</code> 隐藏进度条(适合日志环境)。</div>
+    <div class="why"><b>为什么</b> 默认 64 线程对家宽与低配机器压力大,先 <code>-n 16 -t 10000</code>(10 秒超时)确认端到端能产出文件,再逐步加线程。常用参数:<code>--check</code> 只验活不推送、<code>-m 1</code> 只采集不发布(安全试跑,不碰 Gist)、<code>--invisible</code> 隐藏进度条。</div>
   </div></div>
 
   <div class="step"><div class="no">7</div><div>
-    <h4>检查产出、客户端订阅</h4>
-    <p>打开 Gist,确认 <code>free.yaml</code> 等文件已被更新且含有效节点;复制 raw URL 到客户端订阅。节点名带 emoji、地区、倍率,来自 <code>rename</code> 与 <code>regularize</code> 归一化配置。</p>
-    <div class="why"><b>为什么</b> 验活只代表「运行那一刻能通」,免费节点衰减快,单次结果仅供验证链路,<em>持续可用靠第 8 步的定时调度</em>。</div>
+    <h4>看懂日志:三层健康信号</h4>
+    <div class="code"><span class="cap">一次正常运行应有的三类关键行</span>[CrawlInfo] local proxy is available / configured          <span class="c">// ① 源层:代可用,爬取优先走代理</span>
+[TelegramCrawl] channel=xxx, pages=5, nodes=280                 <span class="c">// ① 源层:每频道实际抓到几页、几个节点</span>
+[GithubCrawl] finished ... found 3860 subscriptions              <span class="c">// ① 源层:候选订阅总量</span>
+[CrawlInfo] start to validate 2681 subscriptions                 <span class="c">// ② 订阅层:进入可用性验证的数量</span>
+[CrawlInfo] crawl finished, found 75 sites                       <span class="c">// ② 订阅层:通过验证的来源数</span>
+[Check] controller ready, group=[free], nodes=322               <span class="c">// ③ 节点层:mihomo 控制器就绪,开始测速</span>
+proxies check finished, total: 322, alive: 41, dead: 281         <span class="c">// ③ 节点层:存活统计</span>
+[UpdateInfo] published verified subscription pool: kept=N        <span class="c">// ④ 发布层:仅可用来源入池</span>
+[PushSuccess] push subscribes information to gist ...            <span class="c">// ④ 发布层:各格式文件已上传</span></div>
+    <div class="why"><b>为什么</b> 四个层次(源→订阅→节点→发布)任何一层出问题表现完全不同,先定位层次再排查,能避免「节点全死」这种误判把可用池清空。</div>
   </div></div>
 
   <div class="step"><div class="no">8</div><div>
+    <h4>检查产出、客户端订阅</h4>
+    <p>打开 Gist,确认 <code>free.yaml</code> 等文件已被更新且含有效节点;复制 raw URL 到客户端订阅。节点名带 emoji、地区、倍率,来自 <code>rename</code> 与 <code>regularize</code> 归一化配置。</p>
+    <div class="why"><b>为什么</b> 验活只代表「运行那一刻能通」,免费节点衰减快,单次结果仅供验证链路,<em>持续可用靠第 9 步的定时调度</em>。</div>
+  </div></div>
+
+  <div class="step"><div class="no">9</div><div>
     <h4>自动化:GitHub Actions 或本机定时</h4>
     <div class="code"><span class="cap">仓库自带 .github/workflows/process.yaml,fork 后只需填 Secrets</span><span class="c"># Settings → Secrets and variables → Actions:</span>
 PUSH_TOKEN      = ghp_xxx           <span class="c"># secret</span>
 SUBSCRIBE_CONF  = https://.../my-config.json   <span class="c"># secret,配置可托管在私有 Gist</span>
 GH_TOKEN        = ghp_xxx           <span class="c"># 可选,提升爬虫额度</span>
+GH_COOKIE       = xxx               <span class="c"># 可选,gist 网页搜索用</span>
 
 <span class="c"># 或者本机 crontab,每天 8:00 跑一次:</span>
 0 8 * * * cd /path/to/aggregator && PUSH_TOKEN=ghp_xxx python subscribe/process.py -s my-config.json</div>
     <div class="why"><b>为什么</b> 配置文件放私有 Gist 用 raw URL 引用,敏感信息不进仓库;官方 workflow 每天定时触发(<code>cron 05 03/11 * * *</code>),订阅内容随之每日刷新,这就是「代理池」的自我维持。</div>
   </div></div>
 
-  <h3><span class="idx">5.3</span>常见故障速查</h3>
+  <h3><span class="idx">5.3</span>常见误区与故障速查(全部来自真实运行)</h3>
   <div class="grid g2">
+    <div class="card"><h5>某轮「存活 0」别急着清池</h5><p>先搜日志有没有 <code>ControllerError</code> / <code>controller did not become ready</code> / <code>mihomo exited</code>。有 = 验活设施故障,程序已自动跳过发布并保留旧文件;没有才是真的全军覆没。<strong>实例</strong>:某轮日志写 357 全灭,但同一批节点直连复测 21/21 存活,原因是控制器请求被代理转发拿到 502。</p></div>
+    <div class="card"><h5>日志说代理不可用,但浏览器能上网</h5><p>检查 <code>test_url</code> 是否返回非 200(204/302/403 都曾导致误判)。排除方法:手动 <code>curl -x http://127.0.0.1:7897 &lt;test_url&gt; -o /dev/null -w "%{http_code}"</code>,只要不是连接失败(000),就该让程序把代理判为可用。<strong>实例</strong>:generate_204 返 204、zen 返 403,都曾让整个回退被关掉。</p></div>
+    <div class="card"><h5>抓取 0 产出≠源失效</h5><p>看每个源的计数行:TG 现在按频道打印 <code>pages=..., nodes=...</code>,能区分「抓到 5 页 280 个节点」和「频道_page 请求失败」。<strong>实例</strong>:早期版本用 t.me 首页一次探测失败就跳过全部频道,实际各频道页面都是通的。</p></div>
+    <div class="card"><h5>推送 422 / 空文件</h5><p>Gist 返回 <code>missing_field: files</code> 通常是转换产物为空(如 v2ray 目标对某些节点组合产出 0 字节)。现在空产物直接拒绝推送并 <code>[ConvertError] empty output</code>,Gist 保留旧文件。把 target 换成 <code>mixed</code> 即可。</p></div>
+    <div class="card"><h5>订阅池「删了又回来」</h5><p>旧链路每个环节都从远端读回再整池覆写,Gist raw 的 CDN 缓存(约 5 分钟)会把删除项带回来。现在池子由<strong>本轮内存状态一次性发布</strong>,看到 <code>published verified subscription pool: kept=N</code> 就是权威数字。</p></div>
     <div class="card"><h5>配置校验失败</h5><p><code>python -m json.tool my-config.json</code> 先验 JSON 语法;再检查「名字链条」:sites.push_to → groups 键 → storage.items 键是否全部对得上。</p></div>
-    <div class="card"><h5>推送 401 / 无权限</h5><p>PUSH_TOKEN 过期或权限不足,Gist 需要 classic PAT 且勾选 gist scope;PasteGG 等同理检查各自 API Key。</p></div>
-    <div class="card"><h5>节点全军覆没</h5><p>先确认本机网络能直连测试 URL(<code>-u</code> 可自定义);再放宽 <code>-d</code> 延迟阈值、增大 <code>-t</code> 超时;确认没把 <code>SKIP_ALIVE_CHECK</code> 与过滤条件同时调得极严。</p></div>
-    <div class="card"><h5>GitHub 爬虫无产出</h5><p>大概率被限流:导出 <code>GH_TOKEN</code>;检查 <code>exclude_repos</code> 是否误杀;<code>WORKFLOW_MODE=1</code> 可单测爬取阶段。</p></div>
   </div>
 
   <div class="note warn">
@@ -661,7 +718,7 @@ GH_TOKEN        = ghp_xxx           <span class="c"># 可选,提升爬虫额度<
 
 <footer>
   <div class="wrap">
-    <div>Aggregator 项目完全指南 · 基于仓库 README 与源码梳理 · 生成于 2026-10-02</div>
+    <div>Aggregator 项目完全指南 · 基于仓库 README 与源码梳理 · 2026-10-03 更新:本地代理路由、两层验活与仅可用发布</div>
     <div>入口:<code>subscribe/process.py</code> · 模板:<code>subscribe/examples/config.default.json</code> · 凭证:<code>.env</code>(已被 gitignore 排除)</div>
   </div>
 </footer>
