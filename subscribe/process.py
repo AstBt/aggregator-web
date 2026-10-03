@@ -330,15 +330,15 @@ def aggregate(args: argparse.Namespace) -> None:
         cost = "{:.2f}s".format(time.time() - starttime)
         logger.info(f"group [{k}] process finished, count: {len(nochecks)}, cost: {cost}")
 
-    # 仅保留验活后确认可用的订阅, 回写订阅池
-    workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
-
+    # 先做失效订阅的 remark 回写, 再按本轮验活结果裁剪订阅池, 保证池内仅存确认可用的订阅
     workflow.refresh(
         config=process_config,
         push=pushtool,
         alives=dict(subscribes),
         skip_remark=args.skip_remark,
     )
+
+    workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
 
 
 if __name__ == "__main__":

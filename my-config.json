@@ -135,7 +135,7 @@
             "list_only": true,
             "targets": {
                 "clash": "free-clash",
-                "v2ray": "free-v2ray",
+                "mixed": "free-v2ray",
                 "singbox": "free-singbox"
             }
         }
