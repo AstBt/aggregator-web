@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 import sys
 import urllib.parse
@@ -33,6 +34,7 @@ def extract_subscribes(
     if not content:
         return result
 
+    content = html.unescape(content)
     push_to = list(push_to or [])
     task = task or TaskParams(push_to=push_to)
     if task.push_to is None:
@@ -124,7 +126,7 @@ def extract_subscribes(
             try:
                 groups = re.findall(PROTOCOL_REGEX, content, flags=re.I)
                 if groups:
-                    uris.extend([x.lower().strip() for x in groups if x])
+                    uris.extend([x.strip() for x in groups if x])
             except Exception:
                 logger.error("[ExtractError] failed to extract single proxy")
 

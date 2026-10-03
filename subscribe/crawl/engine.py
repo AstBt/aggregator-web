@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import base64
-import os
 import re
+from functools import partial
 
+import httpclient
 import push
 import utils
 from config.models import (
@@ -151,19 +152,9 @@ def run(
         display=display,
     )
 
-    # 本地代理:启用且探活通过时,爬取源与订阅验证均优先走本地代理
-    if config.proxy.enable and not utils.isblank(config.proxy.address):
-        probe = utils.http_get(url=config.proxy.test_url, proxy=config.proxy.address, timeout=6, retry=1)
-        if probe:
-            ctx.proxy = config.proxy.address
-            # urllib 读取环境变量,置入后所有网络请求(爬虫/验证/推送)均优先经代理
-            os.environ["HTTP_PROXY"] = config.proxy.address
-            os.environ["HTTPS_PROXY"] = config.proxy.address
-            logger.info(
-                f"[CrawlInfo] local proxy is available: {config.proxy.address}, crawling and validation prefer it"
-            )
-        else:
-            logger.warning(f"[CrawlWarn] local proxy {config.proxy.address} is unreachable, fallback disabled")
+    ctx.proxy = httpclient.configure_proxy(
+        config.proxy.enable, config.proxy.address, config.proxy.test_url, context=utils.CTX
+    )
 
     result = ChannelResult()
     if mode != 2:
@@ -251,8 +242,8 @@ def run(
     if pending:
         logger.info(f"[CrawlInfo] start to validate {len(pending)} subscriptions")
         masks = utils.multi_thread_run(
-            func=check_status,
-            tasks=[[item.url, 2, 5, 12, 72, ctx.proxy] for item in pending],
+            func=partial(check_status, proxy=ctx.proxy),
+            tasks=[[item.url, 2, 5, 12, 72] for item in pending],
             num_threads=ctx.num_threads,
             show_progress=ctx.display,
         )

@@ -980,6 +980,7 @@ class CrawlConfig:
             "include_nodes": self.include_nodes,
             "persist": self.persist.to_dict(),
             "task": self.task.to_dict(),
+            "proxy": self.proxy.to_dict(),
         }
         if self.google is not None:
             payload["google"] = self.google.to_dict()

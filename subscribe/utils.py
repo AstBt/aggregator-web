@@ -26,6 +26,7 @@ import uuid
 from concurrent import futures
 from http.client import HTTPMessage, HTTPResponse
 
+import httpclient
 from logger import logger
 from tqdm import tqdm
 from urlvalidator import isurl
@@ -85,92 +86,43 @@ def http_get(
     timeout: float = 10,
     trace: bool = False,
     max_size: int | None = None,
+    direct: bool = False,
 ) -> str:
     if not isurl(url=url):
-        logger.error(f"invalid url: {url}")
+        logger.error(f"invalid url: {hide(url=url)}")
         return ""
 
-    if retry <= 0:
-        logger.debug(f"achieves max retry, url={hide(url=url)}")
-        return ""
-
-    headers = DEFAULT_HTTP_HEADERS if not headers else headers
-
-    interval = max(0, interval)
-    timeout = max(1, timeout)
+    headers = headers or DEFAULT_HTTP_HEADERS
+    interval, timeout = max(0, interval), max(1, timeout)
     length = None if max_size is None or max_size <= 0 else max_size
+    url = encoding_url(url=url)
+    if params and isinstance(params, dict):
+        url += ("&" if "?" in url else "?") + urllib.parse.urlencode(params)
 
-    try:
-        url = encoding_url(url=url)
-        if params and isinstance(params, dict):
-            data = urllib.parse.urlencode(params)
-            if "?" in url:
-                url += f"&{data}"
-            else:
-                url += f"?{data}"
-
-        request = urllib.request.Request(url=url, headers=headers)
-        if proxy and (proxy.startswith("https://") or proxy.startswith("http://")):
-            host, protocal = "", ""
-            if proxy.startswith("https://"):
-                host, protocal = proxy[8:], "https"
-            else:
-                host, protocal = proxy[7:], "http"
-            request.set_proxy(host=host, type=protocal)
-
-        response = urllib.request.urlopen(request, timeout=timeout, context=CTX)
-        content = response.read(length)
-        status_code = response.getcode()
+    for attempt in range(max(0, retry)):
         try:
-            content = str(content, encoding="utf8")
-        except:
-            content = gzip.decompress(content).decode("utf8")
-        if status_code != 200:
-            if trace:
-                logger.error(f"request failed, url: {hide(url)}, code: {status_code}, message: {content}")
-
-            return ""
-
-        return content
-    except urllib.error.URLError as e:
-        if isinstance(e.reason, (socket.timeout, ssl.SSLError)):
-            time.sleep(interval)
-            return http_get(
-                url=url,
-                headers=headers,
-                params=params,
-                retry=retry - 1,
-                proxy=proxy,
-                interval=interval,
-                timeout=timeout,
-                max_size=length,
-            )
-        else:
-            return ""
-    except Exception as e:
-        if trace:
-            logger.error(f"request failed, url: {hide(url)}, message: \n{traceback.format_exc()}")
-
-        if isinstance(e, urllib.error.HTTPError):
+            request = urllib.request.Request(url=url, headers=headers)
+            with httpclient.open_url(request, timeout=timeout, context=CTX, proxy=proxy or None, direct=direct) as response:
+                content = response.read(length)
+                if response.getcode() != 200:
+                    return ""
             try:
-                message = str(e.read(), encoding="utf8")
-            except:
-                message = "unknown error"
-
-            if e.code != 503 or "token" in message:
+                return content.decode("utf8")
+            except UnicodeDecodeError:
+                return gzip.decompress(content).decode("utf8")
+        except urllib.error.HTTPError as exc:
+            if trace:
+                logger.error(f"request failed, url: {hide(url)}, code: {exc.code}")
+            code = exc.code
+            exc.close()
+            if code not in {429, 500, 502, 503, 504}:
                 return ""
-
-        time.sleep(interval)
-        return http_get(
-            url=url,
-            headers=headers,
-            params=params,
-            retry=retry - 1,
-            proxy=proxy,
-            interval=interval,
-            timeout=timeout,
-            max_size=length,
-        )
+        except Exception:
+            if trace:
+                logger.error(f"request failed, url: {hide(url)}, message: {traceback.format_exc()}")
+        if attempt + 1 < retry:
+            time.sleep(interval)
+    return ""
 
 
 def extract_domain(url: str, include_protocal: bool = False) -> str:

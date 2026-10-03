@@ -17,6 +17,7 @@ import urllib.request
 from http.client import HTTPResponse
 
 import airport
+import httpclient
 import utils
 from config.models import StorageItem
 from crawl.channels.page import PageChannel
@@ -127,12 +128,8 @@ def is_reachable(url: str, timeout: float = 5, retry: int = 2) -> bool:
     for attempt in range(retry):
         try:
             request = urllib.request.Request(url=url, headers=headers)
-            response = urllib.request.urlopen(request, timeout=timeout, context=utils.CTX)
-            try:
-                response.close()
-            except Exception:
-                pass
-            return True
+            with httpclient.open_url(request, timeout=timeout, context=utils.CTX):
+                return True
         except urllib.error.HTTPError:
             return True
         except (urllib.error.URLError, socket.timeout, TimeoutError, ssl.SSLError, ConnectionError, OSError):
@@ -198,7 +195,6 @@ def check_status(
     tolerance: float = 0,
     connectable: bool = True,
     proxy: str = "",
-    use_proxy: bool = False,
 ) -> tuple[bool, bool]:
     """
     url: subscription link
@@ -206,8 +202,7 @@ def check_status(
     remain: minimum remaining traffic flow
     spare_time: minimum remaining time
     tolerance: waiting time after expiration
-    proxy: local proxy address, used as fallback when direct connection fails
-    use_proxy: whether the current attempt is already via proxy
+    proxy: preferred local proxy; transport failures fall back to direct connections
 
     Returns:
         tuple[bool, bool]: (available, expired)
@@ -216,112 +211,60 @@ def check_status(
     """
     if not url or retry <= 0:
         return False, connectable
-
     if utils.is_suspicious_url(url):
         logger.debug(f"[Validate] skip suspicious url: {utils.mask(url)}")
         return False, True
 
-    deadline = time.monotonic() + _VALIDATE_DEADLINE
-    remaining = deadline - time.monotonic()
-    if remaining <= 0:
-        return False, connectable
-
-    response = None
-    try:
-        headers = {"User-Agent": f"{utils.USER_AGENT}; Clash.Meta; Mihomo; Shadowrocket;"}
-        request = urllib.request.Request(url=url, headers=headers)
-        if use_proxy and not utils.isblank(proxy):
-            host, protocol = "", ""
-            if proxy.startswith("https://"):
-                host, protocol = proxy[8:], "https"
-            elif proxy.startswith("http://"):
-                host, protocol = proxy[7:], "http"
-            if host:
-                request.set_proxy(host=host, type=protocol)
-        timeout = max(1.0, min(_VALIDATE_CONNECT_TIMEOUT, remaining))
-        response = urllib.request.urlopen(request, timeout=timeout, context=utils.CTX)
-        if response.getcode() != 200:
-            return False, connectable
-
-        if _should_reject_response(response):
-            logger.debug(f"[Validate] reject by header: {utils.mask(url)}")
-            return False, True
-
-        subscription = response.getheader("subscription-userinfo")
-        raw = _read_subscription_body(response, deadline=deadline)
-        if raw is None:
-            return False, True
-
+    for attempt in range(retry):
+        response = None
         try:
-            content = raw.decode("utf-8")
-        except UnicodeDecodeError:
-            return False, True
-
-        if len(content) < 32:
-            return False, False
-
-        if utils.isb64encode(content):
-            return is_expired(header=subscription, remain=remain, spare_time=spare_time, tolerance=tolerance)
-
-        if _looks_like_subscription(raw) == "yes":
-            return is_expired(header=subscription, remain=remain, spare_time=spare_time, tolerance=tolerance)
-
-        lines = [line for line in content.splitlines() if line.strip()]
-        if lines and all(airport.AirPort.check_protocol(line) for line in lines):
-            return True, False
-        return False, True
-    except urllib.error.HTTPError as e:
-        try:
-            message = str(e.read(4096), encoding="utf8")
-        except:
-            message = ""
-
-        expired = e.code == 404 or "token is error" in message
-        if not expired and e.code in [403, 503]:
-            return check_status(
-                url=url,
-                retry=retry - 1,
-                remain=remain,
-                spare_time=spare_time,
-                tolerance=tolerance,
-                connectable=connectable,
-                proxy=proxy,
-                use_proxy=use_proxy,
+            deadline = time.monotonic() + _VALIDATE_DEADLINE
+            request = urllib.request.Request(
+                url=url, headers={"User-Agent": f"{utils.USER_AGENT}; Clash.Meta; Mihomo; Shadowrocket;"}
             )
-
-        return False, expired
-    except (socket.timeout, TimeoutError, ssl.SSLError, ConnectionError, OSError):
-        # 直连失败且配置了本地代理时,再用代理完整验证一次
-        if proxy and not use_proxy:
-            return check_status(
-                url=url,
-                retry=retry,
-                remain=remain,
-                spare_time=spare_time,
-                tolerance=tolerance,
-                connectable=connectable,
-                proxy=proxy,
-                use_proxy=True,
+            response = httpclient.open_url(
+                request, timeout=_VALIDATE_CONNECT_TIMEOUT, context=utils.CTX, proxy=proxy or None
             )
-        return check_status(
-            url=url,
-            retry=retry - 1,
-            remain=remain,
-            spare_time=spare_time,
-            tolerance=tolerance,
-            connectable=connectable,
-            proxy=proxy,
-            use_proxy=use_proxy,
-        )
-    except Exception as e:
-        logger.debug(f"[Validate] unexpected error for {utils.mask(url)}: {e}")
-        return False, connectable
-    finally:
-        if response is not None:
+            if response.getcode() != 200:
+                return False, False
+            if _should_reject_response(response):
+                return False, True
+            subscription = response.getheader("subscription-userinfo")
+            raw = _read_subscription_body(response, deadline=deadline)
+            if raw is None:
+                return False, False
             try:
+                content = raw.decode("utf-8")
+            except UnicodeDecodeError:
+                return False, True
+            if len(content) < 32:
+                return False, False
+            if utils.isb64encode(content) or _looks_like_subscription(raw) == "yes":
+                return is_expired(header=subscription, remain=remain, spare_time=spare_time, tolerance=tolerance)
+            lines = [line for line in content.splitlines() if line.strip()]
+            if lines and all(airport.AirPort.check_protocol(line) for line in lines):
+                return is_expired(header=subscription, remain=remain, spare_time=spare_time, tolerance=tolerance)
+            return False, True
+        except urllib.error.HTTPError as exc:
+            code = exc.code
+            try:
+                invalid_token = "token is error" in exc.read(4096).decode("utf8", errors="replace")
+            finally:
+                exc.close()
+            if code == 404 or invalid_token:
+                return False, True
+            if code not in {403, 429, 500, 502, 503, 504} or attempt + 1 == retry:
+                return False, False
+        except (urllib.error.URLError, OSError):
+            if attempt + 1 == retry:
+                return False, False
+        except Exception as exc:
+            logger.debug(f"[Validate] unexpected error for {utils.mask(url)}: {exc}")
+            return False, False
+        finally:
+            if response is not None:
                 response.close()
-            except Exception:
-                pass
+    return False, False
 
 
 def is_expired(header: str, remain: float = 0, spare_time: float = 0, tolerance: float = 0) -> tuple[bool, bool]:
@@ -334,21 +277,14 @@ def is_expired(header: str, remain: float = 0, spare_time: float = 0, tolerance:
         max(tolerance, 0),
     )
     try:
-        infos = header.split(";")
-        upload, download, total, expire = 0, 0, 0, None
-        for info in infos:
-            words = info.split("=", maxsplit=1)
-            if len(words) <= 1:
-                continue
-
-            if "upload" == words[0].strip():
-                upload = eval(words[1])
-            elif "download" == words[0].strip():
-                download = eval(words[1])
-            elif "total" == words[0].strip():
-                total = eval(words[1])
-            elif "expire" == words[0].strip():
-                expire = None if utils.isblank(words[1]) else eval(words[1])
+        numeric = {}
+        for field in header.split(";"):
+            key, separator, value = field.partition("=")
+            key, value = key.strip(), value.strip()
+            if separator and key in {"upload", "download", "total", "expire"} and value:
+                numeric[key] = int(value)
+        upload, download, total = (numeric.get(key, 0) for key in ("upload", "download", "total"))
+        expire = numeric.get("expire")
 
         # 剩余流量大于 ${remain} GB 并且未过期则返回 True，否则返回 False
         flag = total - (upload + download) > remain * pow(1024, 3) and (

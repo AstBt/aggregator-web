@@ -10,6 +10,7 @@ import urllib
 import urllib.request
 from http.client import HTTPResponse
 
+import httpclient
 import utils
 from config.models import StorageConfig, StorageItem
 from logger import logger
@@ -49,6 +50,9 @@ class PushTo(object):
             return False
 
     def push_to(self, content: str, item: StorageItem, group: str = "", retry: int = 5, **kwargs: object) -> bool:
+        if not isinstance(content, str) or not content.strip():
+            logger.error(f"[PushError] refusing empty content, group=[{group}], backend={self.name}")
+            return False
         if not self.validate(item=item):
             logger.error(f"[PushError] push config is invalidate, domain: {self.name}")
             return False
@@ -67,29 +71,21 @@ class PushTo(object):
 
         try:
             request = urllib.request.Request(url=url, data=data, headers=headers, method=self.method)
-            response = urllib.request.urlopen(request, timeout=60, context=utils.CTX)
-            if self._is_success(response):
-                logger.info(f"[PushSuccess] push subscribes information to {self.name} successed, group=[{group}]")
-                return True
-            else:
-                logger.info(
-                    "[PushError]: group=[{}], name: {}, error message: \n{}".format(
-                        group, self.name, response.read().decode("unicode_escape")
-                    )
-                )
+            with httpclient.open_url(request, timeout=60, context=utils.CTX) as response:
+                if self._is_success(response):
+                    logger.info(f"[PushSuccess] push subscribes information to {self.name} successed, group=[{group}]")
+                    return True
+                logger.error(f"[PushError] unexpected response HTTP {response.getcode()}, group=[{group}]")
                 return False
 
         except Exception as e:
             try:
                 if isinstance(e, urllib.error.HTTPError):
                     code = getattr(e, "code", None)
-                    try:
-                        message = e.read().decode("utf-8", errors="replace")
-                    except Exception:
-                        message = "cannot read error messgae from response"
-                    logger.error(
-                        f"[PushError] request failed, code: {code}, url: {url}, message: {message}, data: {data}"
-                    )
+                    logger.error(f"[PushError] request failed, code: {code}, group=[{group}], backend={self.name}")
+                    e.close()
+                    if code not in {429, 500, 502, 503, 504}:
+                        return False
             except Exception:
                 logger.error(f"[PushError] failed to process exception: {traceback.format_exc()}")
 
