@@ -14,6 +14,7 @@ import urllib
 import urllib.parse
 from collections import defaultdict
 
+import httpclient
 import executable
 import utils
 import yaml
@@ -33,23 +34,29 @@ DOWNLOAD_URL = [
 EXTERNAL_CONTROLLER = "127.0.0.1:9090"
 
 
-def generate_config(path: str, proxies: list[dict[str, object]], filename: str) -> list[dict[str, object]]:
+def generate_config(
+    path: str, proxies: list[dict[str, object]], filename: str, controller: str = EXTERNAL_CONTROLLER
+) -> list[dict[str, object]]:
     os.makedirs(path, exist_ok=True)
     external_config = filter_proxies(proxies)
     config = {
-        "mixed-port": 7890,
-        "external-controller": EXTERNAL_CONTROLLER,
+        "external-controller": controller,
         "mode": "Rule",
         "log-level": "silent",
     }
 
     config.update(external_config)
+    config["proxy-groups"][0] = {"name": "automatic", "type": "select", "proxies": [p["name"] for p in external_config["proxies"]]}
+    serialized = dict(config, proxies=[
+        {key: value for key, value in item.items() if key not in {"sub", "sub_sources", "liveness"}}
+        for item in config["proxies"]
+    ])
     with open(os.path.join(path, filename), "w+", encoding="utf8") as f:
         # avoid mihomo error: invalid REALITY short ID see: https://github.com/MetaCubeX/mihomo/blob/Meta/adapter/outbound/reality.go#L35
         yaml.add_representer(QuotedStr, quoted_scalar)
 
         # write to file
-        yaml.dump(config, f, allow_unicode=True)
+        yaml.dump(serialized, f, allow_unicode=True)
 
     return config.get("proxies", [])
 
@@ -75,9 +82,13 @@ def filter_proxies(proxies: list[dict[str, object]]) -> dict[str, object]:
     unique_proxies, hosts = [], defaultdict(list)
 
     for item in proxies:
-        if not proxy_exists(item, hosts):
+        key = endpoint_key(item)
+        if proxy_exists(item, hosts):
+            duplicate = next(p for p in hosts[key] if proxy_exists(item, {key: [p]}))
+            duplicate["sub_sources"] = sorted(set(subscription_sources(duplicate) + subscription_sources(item)))
+        else:
+            item["sub_sources"] = subscription_sources(item)
             unique_proxies.append(item)
-            key = endpoint_key(item)
             hosts[key].append(item)
 
     # 防止多个代理节点名字相同导致clash配置错误
@@ -124,51 +135,41 @@ def filter_proxies(proxies: list[dict[str, object]]) -> dict[str, object]:
     return config
 
 
+def subscription_sources(proxy: dict[str, object]) -> list[str]:
+    sources = list(proxy.get("sub_sources", []))
+    if proxy.get("sub"):
+        sources.append(proxy["sub"])
+    return list(dict.fromkeys(sources))
+
+
+class ControllerError(RuntimeError):
+    pass
+
+
 def check(
     proxy: dict[str, object], api_url: str, timeout: int, test_url: str, delay: int, strict: bool = False
 ) -> bool:
-    proxy_name = ""
-    try:
-        proxy_name = urllib.parse.quote(proxy.get("name", ""), safe="")
-    except:
-        logger.debug(f"encoding proxy name error, proxy: {proxy.get('name', '')}")
-        return False
-
-    base_url = f"http://{api_url}/proxies/{proxy_name}/delay?timeout={str(timeout)}&url="
-
-    # 失败重试间隔：30ms ~ 200ms
-    interval = random.randint(30, 200) / 1000
-    targets = [
-        test_url,
-        "https://www.youtube.com/s/player/23010b46/player_ias.vflset/en_US/remote.js",
-    ]
+    proxy_name = urllib.parse.quote(str(proxy.get("name", "")), safe="")
+    targets = [test_url]
     if strict:
         targets.append(random.choice(DOWNLOAD_URL))
-    try:
-        alive, allowed = True, False
-        trace = os.getenv("FOOL_PROOF", "").lower() in ["true", "1"]
-
-        if trace:
-            # prevents liveness check from being terminated due to a long period of time with no output
-            logger.info(f"start liveness check, proxy: {proxy.get('name', '')}")
-
-        for target in targets:
-            target = urllib.parse.quote(target)
-            url = f"{base_url}{target}"
-            content = utils.http_get(url=url, retry=2, interval=interval, trace=trace)
-            try:
-                data = json.loads(content)
-            except:
-                data = {}
-
-            if data.get("delay", -1) <= 0 or data.get("delay", -1) > delay:
-                alive = False
-                break
-
-        return alive
-    except Exception as e:
-        logger.debug(f"check failed, proxy: {proxy.get('name')}, message: {str(e)}")
-        return False
+    for target in targets:
+        query = urllib.parse.urlencode({"timeout": timeout, "url": target})
+        request = urllib.request.Request(f"http://{api_url}/proxies/{proxy_name}/delay?{query}")
+        try:
+            with httpclient.open_url(request, timeout=max(2, timeout / 1000 + 2), context=CTX, direct=True) as response:
+                measured = json.loads(response.read()).get("delay", -1)
+        except urllib.error.HTTPError as exc:
+            status = exc.code
+            exc.close()
+            if status in {408, 503, 504}:
+                return False
+            raise ControllerError(f"controller returned HTTP {status}") from exc
+        except (urllib.error.URLError, OSError, ValueError) as exc:
+            raise ControllerError(f"controller request failed: {type(exc).__name__}") from exc
+        if not isinstance(measured, (int, float)) or measured < 0 or measured > delay:
+            return False
+    return True
 
 
 def is_mihomo() -> bool:

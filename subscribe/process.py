@@ -193,6 +193,7 @@ def aggregate(args: argparse.Namespace) -> None:
     results = utils.multi_process_run(func=workflow.executewrapper, tasks=tasks)
 
     subscribes, datasets, alive_subs = {}, {}, set()
+    checks_complete = not args.skip_alive_check
     for i in range(len(results)):
         data = results[i]
         if not data or data[0] < 0 or not data[1]:
@@ -218,26 +219,33 @@ def aggregate(args: argparse.Namespace) -> None:
         workspace = os.path.join(PATH, "clash")
         filename = "config.yaml"
         starttime = time.time()
-        nochecks = pipeline.check_alive_proxies(
-            proxies=proxies,
-            clash_bin=clash_bin,
-            workspace=workspace,
-            filename=filename,
-            timeout=args.timeout,
-            test_url=args.url,
-            delay=process_config.delay,
-            num_threads=args.num,
-            display=display,
-            skip=args.skip_alive_check,
-            group=k,
-        )
+        try:
+            nochecks = pipeline.check_alive_proxies(
+                proxies=proxies,
+                clash_bin=clash_bin,
+                workspace=workspace,
+                filename=filename,
+                timeout=args.timeout,
+                test_url=args.url,
+                delay=process_config.delay,
+                num_threads=args.num,
+                display=display,
+                skip=args.skip_alive_check,
+                group=k,
+            )
+        except clash.ControllerError as exc:
+            checks_complete = False
+            logger.error(f"[CheckError] {exc}; preserving previously published results")
+            continue
 
+        if args.skip_alive_check:
+            logger.warning(f"[Check] group=[{k}] checks skipped; unverified nodes will not be published")
+            continue
         for item in nochecks:
-            # 验活存活的节点, 记录其来源订阅, 用于过滤订阅池
-            sub = item.get("sub")
-            if sub:
-                alive_subs.add(sub)
-            item.pop("sub", "")
+            alive_subs.update(clash.subscription_sources(item))
+            item.pop("sub", None)
+            item.pop("sub_sources", None)
+            item.pop("liveness", None)
 
         if len(nochecks) <= 0:
             logger.error(f"cannot fetch any proxy, group=[{k}], cost: {time.time()-starttime:.2f}s")
@@ -338,7 +346,10 @@ def aggregate(args: argparse.Namespace) -> None:
         skip_remark=args.skip_remark,
     )
 
-    workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
+    if checks_complete:
+        workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
+    else:
+        logger.warning("[UpdateInfo] skipping pool replacement because liveness checks were incomplete")
 
 
 if __name__ == "__main__":

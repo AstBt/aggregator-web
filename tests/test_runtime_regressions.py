@@ -10,7 +10,9 @@ from unittest.mock import MagicMock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "subscribe"))
 
+import clash
 import httpclient
+import pipeline
 import utils
 from config.models import CrawlConfig, ProcessConfig, ProxyConfig, TaskParams, TelegramChannelConfig, TelegramConfig
 from crawl import engine
@@ -144,6 +146,55 @@ class TelegramExtractionTests(unittest.TestCase):
             result = telegram.TelegramChannel().crawl(config, ctx)
         self.assertEqual(len(result.nodes.uris), 1)
         self.assertTrue(all("/s/channel" in call.kwargs["url"] for call in get.call_args_list))
+
+
+class ControllerTests(unittest.TestCase):
+    def test_delay_check_is_direct_and_uses_only_configured_target(self):
+        with patch("httpclient.open_url", return_value=Response(b'{"delay":0}')) as opener:
+            self.assertTrue(clash.check({"name": "node"}, "127.0.0.1:9090", 12000, "https://example.com/204", 5000))
+        self.assertEqual(opener.call_count, 1)
+        self.assertTrue(opener.call_args.kwargs["direct"])
+        self.assertEqual(opener.call_args.kwargs["timeout"], 14)
+        self.assertNotIn("youtube", opener.call_args.args[0].full_url)
+
+    def test_node_timeout_is_dead_but_bad_controller_is_infrastructure_error(self):
+        for code in (503, 502):
+            exc = urllib.error.HTTPError("http://127.0.0.1/delay", code, "error", {}, io.BytesIO())
+            with self.subTest(code=code), patch("httpclient.open_url", side_effect=exc):
+                if code == 503:
+                    self.assertFalse(clash.check({"name": "node"}, "127.0.0.1:9090", 5000, "https://example.com/204", 5000))
+                else:
+                    with self.assertRaises(clash.ControllerError):
+                        clash.check({"name": "node"}, "127.0.0.1:9090", 5000, "https://example.com/204", 5000)
+
+    def test_controller_connection_failure_is_not_node_death(self):
+        with patch("httpclient.open_url", side_effect=urllib.error.URLError("controller offline")):
+            with self.assertRaises(clash.ControllerError):
+                clash.check({"name": "node"}, "127.0.0.1:9090", 5000, "https://example.com/204", 5000)
+
+    def test_wait_detects_core_exit(self):
+        process = MagicMock(returncode=1)
+        process.poll.return_value = 1
+        with self.assertRaises(clash.ControllerError):
+            pipeline._wait_for_controller(process, "127.0.0.1:9090")
+
+    def test_duplicate_nodes_preserve_all_subscription_sources(self):
+        nodes = [
+            {"name": name, "server": "server.example.com", "port": 443, "type": "trojan", "password": "Secret", "sub": url}
+            for name, url in (("A", "https://one.example.com/sub"), ("B", "https://two.example.com/sub"))
+        ]
+        result = clash.filter_proxies(nodes)["proxies"]
+        self.assertEqual(len(result), 1)
+        self.assertEqual(set(clash.subscription_sources(result[0])), {"https://one.example.com/sub", "https://two.example.com/sub"})
+
+    def test_check_config_does_not_bind_user_proxy_port(self):
+        import tempfile
+        import yaml
+        with tempfile.TemporaryDirectory() as directory:
+            clash.generate_config(directory, [], "probe.yaml", controller="127.0.0.1:12345")
+            config = yaml.safe_load((Path(directory) / "probe.yaml").read_text(encoding="utf8"))
+        self.assertEqual(config["external-controller"], "127.0.0.1:12345")
+        self.assertNotIn("mixed-port", config)
 
 
 if __name__ == "__main__":

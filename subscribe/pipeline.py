@@ -1,10 +1,16 @@
 # -*- coding: utf-8 -*-
 
+import copy
+import json
 import os
-import random
+import socket
 import subprocess
+import tempfile
 import time
+import urllib.error
+from concurrent.futures import ThreadPoolExecutor
 
+import httpclient
 import utils
 import workflow
 import yaml
@@ -157,35 +163,57 @@ def check_alive_proxies(
 ) -> list[dict[str, object]]:
     if not proxies:
         return []
-
-    proxies = clash.generate_config(workspace, proxies, filename)
     if skip:
-        return proxies
+        return clash.filter_proxies(copy.deepcopy(proxies))["proxies"]
 
-    checks, nochecks = workflow.liveness_fillter(proxies=proxies)
-    if not checks:
-        return nochecks
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        controller = f"127.0.0.1:{listener.getsockname()[1]}"
+    binpath = os.path.abspath(os.path.join(workspace, clash_bin))
+    process = None
+    with tempfile.TemporaryDirectory(prefix="aggregator-check-") as directory:
+        candidates = clash.generate_config(directory, copy.deepcopy(proxies), filename, controller=controller)
+        try:
+            utils.chmod(binpath)
+            logger.info(f"[Check] starting dedicated controller for group=[{group}]")
+            process = subprocess.Popen(
+                [binpath, "-d", os.path.abspath(workspace), "-f", os.path.join(directory, filename)],
+                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
+            _wait_for_controller(process, controller)
+            logger.info(f"[Check] controller ready, group=[{group}], nodes={len(candidates)}")
+            with ThreadPoolExecutor(max_workers=max(1, num_threads)) as executor:
+                masks = list(executor.map(
+                    lambda item: clash.check(item, controller, timeout, test_url, delay), candidates
+                ))
+            _wait_for_controller(process, controller, timeout=1)
+            available = [item for item, alive in zip(candidates, masks) if alive]
+            logger.info(f"proxies check finished, total: {len(candidates)}, alive: {len(available)}, dead: {len(candidates) - len(available)}")
+            return available
+        except (OSError, clash.ControllerError) as exc:
+            raise clash.ControllerError(f"group [{group}] liveness infrastructure failed: {exc}") from exc
+        finally:
+            if process is not None:
+                process.terminate()
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=5)
 
-    binpath = os.path.join(workspace, clash_bin)
-    utils.chmod(binpath)
-    logger.info(f"startup clash now, workspace: {workspace}, config: {filename}")
-    process = subprocess.Popen([binpath, "-d", workspace, "-f", os.path.join(workspace, filename)])
-    logger.info(f"clash start success, begin check proxies, group: {group}\tcount: {len(checks)}")
-    time.sleep(random.randint(5, 8))
-    params = [
-        [item, clash.EXTERNAL_CONTROLLER, timeout, test_url, delay, False] for item in checks if isinstance(item, dict)
-    ]
-    masks = utils.multi_thread_run(func=clash.check, tasks=params, num_threads=num_threads, show_progress=display)
-    try:
-        process.terminate()
-    except Exception:
-        logger.error(f"terminate clash process error, group: {group}")
 
-    availables = [checks[i] for i in range(len(checks)) if masks[i]]
-    nochecks.extend(availables)
-    logger.info(
-        f"proxies check finished, total: {len(checks)}, alive: {len(availables)}, dead: {len(checks) - len(availables)}"
-    )
-    return nochecks
+def _wait_for_controller(process: subprocess.Popen, controller: str, timeout: float = 10) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            raise clash.ControllerError(f"mihomo exited before completing checks (code={process.returncode})")
+        try:
+            with httpclient.open_url(f"http://{controller}/version", timeout=0.5, direct=True) as response:
+                if isinstance(json.loads(response.read()).get("version"), str):
+                    return
+        except (OSError, ValueError, urllib.error.URLError):
+            pass
+        time.sleep(0.1)
+    raise clash.ControllerError("mihomo controller did not become ready")
 
 
