@@ -581,16 +581,17 @@ class AirPort:
             ):
                 logger.error(f"[ParseError] cannot found any proxies, subscribe: {utils.mask(url=url)}")
                 continue
-            collected.extend(
-                self.decode(
-                    text=text,
-                    artifact=f"{artifact}-sub",
-                    program=bin_name,
-                    ignore=ignore_exclude,
-                    special=special_protocols,
-                    do_verify=False,
-                )
+            decoded = self.decode(
+                text=text,
+                artifact=f"{artifact}-sub",
+                program=bin_name,
+                ignore=ignore_exclude,
+                special=special_protocols,
+                do_verify=False,
             )
+            for node in decoded:
+                node["sub"] = url
+            collected.extend(decoded)
 
         if source.uris:
             collected.extend(
@@ -690,7 +691,7 @@ class AirPort:
 
             name = re.sub(r"\s+(\d+)[\s_\-\|]+([A-Za-z])\b", r"-\1\2", name)
             item["name"] = re.sub(r"(-\d+[A-Za-z])+$", "", name).upper()
-            item["sub"] = subscribe_url
+            item.setdefault("sub", subscribe_url)
             item["liveness"] = self.check_alive
 
             if require_tls:

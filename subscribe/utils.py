@@ -154,14 +154,14 @@ def extract_cookie(text: str) -> str:
     return cookie
 
 
-def cmd(command: list[str], output: bool = False) -> tuple[bool, str]:
+def cmd(command: list[str], output: bool = False, cwd: str | None = None) -> tuple[bool, str]:
     if command is None or len(command) == 0:
         return False, ""
 
     p = (
-        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        subprocess.Popen(command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, cwd=cwd)
         if output
-        else subprocess.Popen(command)
+        else subprocess.Popen(command, cwd=cwd)
     )
     p.wait()
 

@@ -13,8 +13,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "subscribe"))
 import clash
 import httpclient
 import pipeline
+import process
+import push
+import subconverter
 import utils
-from config.models import CrawlConfig, ProcessConfig, ProxyConfig, TaskParams, TelegramChannelConfig, TelegramConfig
+import workflow
+from config.models import CrawlConfig, CrawlPersist, NodeInput, ProcessConfig, ProxyConfig, SiteConfig, StorageConfig, StorageItem, TaskParams, TelegramChannelConfig, TelegramConfig
 from crawl import engine
 from crawl.channels import telegram
 from crawl.extract import extract_subscribes
@@ -195,6 +199,75 @@ class ControllerTests(unittest.TestCase):
             config = yaml.safe_load((Path(directory) / "probe.yaml").read_text(encoding="utf8"))
         self.assertEqual(config["external-controller"], "127.0.0.1:12345")
         self.assertNotIn("mixed-port", config)
+
+
+class PublicationTests(unittest.TestCase):
+    def config(self):
+        item = StorageItem(username="test", gist_id="id", filename="pool.json")
+        return ProcessConfig(
+            storage=StorageConfig(engine="gist", items={"pool": item}),
+            crawl=CrawlConfig(persist=CrawlPersist(subscribe="pool")),
+            sites=[
+                SiteConfig(name="one", nodes=NodeInput(subscribe="https://one.example.com/sub"), push_to=["free"]),
+                SiteConfig(name="two", nodes=NodeInput(subscribe="https://two.example.com/sub"), push_to=["free"]),
+            ],
+        )
+
+    def test_pool_is_built_in_memory_and_written_once_without_cdn_read(self):
+        backend = push.PushToGist("dummy")
+        with patch.object(backend, "push_to", return_value=True) as publish, patch("utils.http_get", side_effect=AssertionError("no read-back")):
+            workflow.filter_pool(self.config(), backend, {"https://one.example.com/sub"})
+        import json
+        payload = json.loads(publish.call_args.kwargs["content"])
+        self.assertEqual(set(payload), {"https://one.example.com/sub"})
+        self.assertEqual(publish.call_count, 1)
+        self.assertEqual(payload["https://one.example.com/sub"]["errors"], 0)
+
+    def test_refresh_cannot_overwrite_pool(self):
+        backend = push.PushToGist("dummy")
+        with patch.object(backend, "push_to") as publish, patch("utils.http_get", side_effect=AssertionError("no CDN read")):
+            workflow.refresh(self.config(), backend, {"https://one.example.com/sub": False})
+        publish.assert_not_called()
+
+    def test_empty_verified_pool_is_explicit_json_not_blank(self):
+        backend = push.PushToGist("dummy")
+        with patch.object(backend, "push_to", return_value=True) as publish:
+            workflow.filter_pool(self.config(), backend, set())
+        self.assertEqual(publish.call_args.kwargs["content"], "{}")
+
+    def test_backend_rejects_empty_conversion_without_request(self):
+        backend = push.PushToGist("dummy")
+        with patch("httpclient.open_url") as request:
+            self.assertFalse(backend.push_to("", StorageItem(gist_id="id", filename="mixed.txt")))
+            self.assertFalse(backend.push_to(" \n", StorageItem(gist_id="id", filename="mixed.txt")))
+        request.assert_not_called()
+
+    def test_crawl_does_not_publish_unverified_candidates(self):
+        backend = push.PushToGist("dummy")
+        with patch.object(backend, "push_to") as publish, patch("push.get_instance", return_value=backend), patch("crawl.engine.load_records", return_value={}), patch("utils.multi_thread_run", return_value=[(True, False)]):
+            result = ChannelResult()
+            result.add_subscribe("https://one.example.com/sub", "GIST", TaskParams(push_to=["free"]))
+            fake_channel = MagicMock()
+            fake_channel.crawl.return_value = result
+            config = CrawlConfig(gist=MagicMock(enable=True), persist=CrawlPersist(subscribe="pool"))
+            with patch.dict(engine.CHANNELS, {"gist": fake_channel}):
+                sites = engine.run(config, self.config().storage, display=False)
+        self.assertEqual(len(sites), 1)
+        publish.assert_not_called()
+
+    def test_scattered_nodes_keep_target_groups_through_engine(self):
+        result = extract_subscribes("trojan://Secret@server.example.com:443#node", push_to=["free"], include_nodes=True)
+        channel = MagicMock()
+        channel.crawl.return_value = result
+        with patch.dict(engine.CHANNELS, {"telegram": channel}):
+            sites = engine.run(CrawlConfig(telegram=MagicMock(enable=True)), storage=None, display=False)
+        self.assertEqual(sites[0].push_to, ["free"])
+        self.assertEqual(sites[0].nodes.uris, result.nodes.uris)
+
+    def test_subconverter_runs_from_its_own_directory(self):
+        with patch("utils.chmod"), patch("utils.cmd", return_value=(True, "")) as command:
+            self.assertTrue(subconverter.convert("subconverter-windows-amd.exe", "unit"))
+        self.assertEqual(command.call_args.kwargs["cwd"], subconverter.getpath())
 
 
 if __name__ == "__main__":

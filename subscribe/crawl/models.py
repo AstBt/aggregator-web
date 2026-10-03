@@ -27,6 +27,7 @@ class SubItem:
 class ChannelResult:
     nodes: NodeInput = field(default_factory=NodeInput)
     items: list[SubItem] = field(default_factory=list)
+    node_groups: list[str] = field(default_factory=list)
 
     def merge(self, other: ChannelResult | None) -> ChannelResult:
         if not other:
@@ -36,6 +37,7 @@ class ChannelResult:
         self.nodes.uris = list(dict.fromkeys(self.nodes.uris + other.nodes.uris))
         self.nodes.proxies.extend(other.nodes.proxies)
         self.items.extend(other.items)
+        self.node_groups = list(dict.fromkeys(self.node_groups + other.node_groups))
         return self
 
     def add_subscribe(

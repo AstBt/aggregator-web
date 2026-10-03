@@ -235,25 +235,26 @@ def filter_pool(config: ProcessConfig, push: PushTo, alives: set[str]) -> None:
     if not push.validate(item=item):
         return
 
-    url = push.raw_url(item=item)
-    content = utils.http_get(url=url)
-    try:
-        data = json.loads(content)
-    except Exception:
-        logger.debug("[UpdateError] parse subscription pool failed, skip filtering")
-        return
-    if not isinstance(data, dict):
-        return
-
     kept = {}
-    for sub, record in data.items():
-        if sub in alives:
-            record["errors"] = 0
-            kept[sub] = record
-    dropped = len(data) - len(kept)
+    for site in config.sites:
+        if not site.enable or site.skip_cache:
+            continue
+        for sub in site.nodes.subscribe_list():
+            if sub not in alives:
+                continue
+            record = kept.setdefault(sub, {
+                "origin": site.origin or Origin.TEMPORARY.name,
+                "push_to": [],
+                "errors": 0,
+                "discovered": True,
+                "skip_cache": False,
+                "allow_nonstandard": site.allow_nonstandard,
+                "debut": True,
+            })
+            record["push_to"] = list(dict.fromkeys(record["push_to"] + site.push_to))
 
     if push.push_to(content=json.dumps(kept), item=item, group="crawled-filter"):
-        logger.info(f"[UpdateInfo] subscription pool filtered by liveness: kept={len(kept)}, dropped={dropped}")
+        logger.info(f"[UpdateInfo] published verified subscription pool: kept={len(kept)}")
     else:
         logger.error("[UpdateError] push filtered subscription pool failed")
 
@@ -264,32 +265,6 @@ def refresh(
     if not isinstance(config, ProcessConfig) or not isinstance(push, PushTo):
         logger.error("[UpdateError] cannot update remote config because content is empty")
         return
-
-    invalidsubs = None if (skip_remark or not alives) else [k for k, v in alives.items() if not v]
-    if invalidsubs and config.crawl:
-        crawledsub = config.crawl.persist.subscribe
-        threshold = max(config.crawl.max_fails, 1)
-        pushconf = config.storage.items.get(crawledsub)
-        if push.validate(item=pushconf):
-            url = push.raw_url(item=pushconf)
-            content = utils.http_get(url=url)
-            try:
-                data, count = json.loads(content), 0
-                for sub in invalidsubs:
-                    record = data.pop(sub, None)
-                    if not record:
-                        continue
-                    errors = record.get("errors", 0) + 1
-                    count += 1
-                    if errors <= threshold and standard_sub(url=sub):
-                        record["errors"] = errors
-                        data[sub] = record
-                if count > 0:
-                    content = json.dumps(data)
-                    push.push_to(content=content, item=pushconf, group="crawled-remark")
-                    logger.info(f"[UpdateInfo] found {count} invalid crawled subscriptions")
-            except Exception:
-                logger.error("[UpdateError] remark invalid crawled subscriptions failed")
 
     if not config.update.enable:
         logger.debug("[UpdateError] skip update remote config because enable=[False]")

@@ -43,7 +43,7 @@ def generate_conf(
     emoji: bool = True,
     list_only: bool = True,
     ignore_exclude: bool = True,
-) -> None:
+) -> bool:
     if not filepath or not name or not source or not dest or not target:
         logger.error("invalidate arguments, so cannot execute subconverter")
         return False
@@ -90,13 +90,10 @@ def generate_conf(
         lines.append("\n")
         content = "\n".join(lines)
 
-        FILE_LOCK.acquire(30)
-        try:
+        with FILE_LOCK:
             with open(filepath, "a+", encoding="utf8") as f:
                 f.write(content)
                 f.flush()
-        finally:
-            FILE_LOCK.release()
 
         return True
     except:
@@ -111,7 +108,7 @@ def convert(binname: str, artifact: str = "") -> bool:
         args.append("--artifact")
         args.append(artifact)
 
-    success, _ = utils.cmd(args)
+    success, _ = utils.cmd(args, cwd=getpath())
     return success
 
 

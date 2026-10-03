@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import re
 from functools import partial
 
@@ -14,11 +13,10 @@ from config.models import (
     NodeInput,
     SiteConfig,
     StorageConfig,
-    StorageItem,
     TaskParams,
 )
 from crawl.channels import CHANNELS
-from crawl.helpers import check_status, load_records, naming_task, save_records
+from crawl.helpers import check_status, load_records, naming_task
 from crawl.models import ChannelResult, CrawlContext, SubItem
 from logger import logger
 from origin import Origin
@@ -99,6 +97,9 @@ def _collapse_items(items: list[SubItem] | None) -> list[SubItem]:
             winner, loser = item, current
         elif (not item.persist_only) and current.persist_only and item.ready == current.ready:
             winner, loser = item, current
+        winner.task = winner.task.merge(TaskParams(push_to=list(dict.fromkeys(
+            list(current.task.push_to or []) + list(item.task.push_to or [])
+        ))))
         winner.errors = max(winner.errors, loser.errors)
         winner.allow_nonstandard = winner.allow_nonstandard or loser.allow_nonstandard
         winner.skip_cache = winner.skip_cache or loser.skip_cache
@@ -133,12 +134,8 @@ def run(
         pushtool = None
 
     persist_subscribe = storage.items.get(config.persist.subscribe) if storage and config.persist.subscribe else None
-    persist_nodes = storage.items.get(config.persist.nodes) if storage and config.persist.nodes else None
-    if mode == 1 and not (pushtool and persist_subscribe):
-        logger.warning(
-            "[CrawlWarn] skip crawling tasks because the mode is set to crawl only but no valid persistence configuration is set"
-        )
-        return []
+    if mode == 1:
+        logger.info("[CrawlInfo] crawl-only mode will not publish unverified candidates")
 
     ctx = CrawlContext(
         mode=mode,
@@ -268,16 +265,12 @@ def run(
     if not config.include_nodes:
         extra.uris = []
     if not extra.empty():
-        sites.append(_site_from_nodes("crawled-nodes", extra, Origin.TEMPORARY.name, config.task))
-        _snapshot_nodes(pushtool, persist_nodes, extra)
-
-    if pushtool and persist_subscribe and cached:
-        survivors = {key: value for key, value in cached.items() if not value.get("skip_cache")}
-        if survivors:
-            save_records(pushtool, persist_subscribe, survivors)
+        node_groups = list(dict.fromkeys(list(config.task.push_to or []) + result.node_groups))
+        node_task = config.task.merge(TaskParams(push_to=node_groups))
+        sites.append(_site_from_nodes("crawled-nodes", extra, Origin.TEMPORARY.name, node_task))
 
     if mode == 1:
-        logger.warning("[CrawlWarn] skip aggregate because mode=1 represents only crawling subscriptions")
+        logger.warning("[CrawlWarn] crawl-only candidates remain local; publication requires node liveness checks")
 
     logger.info(f"[CrawlInfo] crawl finished, found {len(sites)} sites")
     return sites
@@ -295,18 +288,4 @@ def _cache_record(site: SiteConfig) -> dict[str, object]:
     }
 
 
-def _snapshot_nodes(pushtool: PushTo | None, item: StorageItem | None, extra: NodeInput) -> None:
-    if not isinstance(pushtool, PushTo) or not isinstance(item, StorageItem):
-        return
-    try:
-        if extra.uris:
-            content = base64.b64encode("\n".join(extra.uris).encode()).decode()
-        elif extra.proxies:
-            import yaml
 
-            content = yaml.dump({"proxies": extra.proxies}, allow_unicode=True)
-        else:
-            return
-        pushtool.push_to(content=content, item=item, group="proxies")
-    except Exception:
-        logger.error("[CrawlError] persist crawled nodes failed")

@@ -131,6 +131,8 @@ def extract_subscribes(
                 logger.error("[ExtractError] failed to extract single proxy")
 
         result.nodes = NodeInput(subscribe=seen, uris=list(dict.fromkeys(uris)))
+        if result.nodes.uris:
+            result.node_groups = list(task.push_to or push_to)
         return result
     except Exception:
         logger.error("[ExtractError] extract subscribe error")

@@ -193,6 +193,7 @@ def aggregate(args: argparse.Namespace) -> None:
     results = utils.multi_process_run(func=workflow.executewrapper, tasks=tasks)
 
     subscribes, datasets, alive_subs = {}, {}, set()
+    alive_snapshot = []
     checks_complete = not args.skip_alive_check
     for i in range(len(results)):
         data = results[i]
@@ -246,6 +247,7 @@ def aggregate(args: argparse.Namespace) -> None:
             item.pop("sub", None)
             item.pop("sub_sources", None)
             item.pop("liveness", None)
+        alive_snapshot.extend(nochecks)
 
         if len(nochecks) <= 0:
             logger.error(f"cannot fetch any proxy, group=[{k}], cost: {time.time()-starttime:.2f}s")
@@ -277,7 +279,7 @@ def aggregate(args: argparse.Namespace) -> None:
 
         targets = group.targets
         for target, storage_name in targets.items():
-            persisted, content = False, " "
+            persisted, content = False, ""
 
             # convert
             artifact = f"convert_{target}"
@@ -286,6 +288,9 @@ def aggregate(args: argparse.Namespace) -> None:
             if os.path.exists(generate_conf) and os.path.isfile(generate_conf):
                 os.remove(generate_conf)
 
+            destination = os.path.join(PATH, "subconverter", dest_file)
+            if os.path.isfile(destination):
+                os.remove(destination)
             success = subconverter.generate_conf(
                 filepath=generate_conf,
                 name=artifact,
@@ -308,6 +313,10 @@ def aggregate(args: argparse.Namespace) -> None:
 
                 with open(filepath, "r", encoding="utf8") as f:
                     content = f.read()
+                if not content.strip():
+                    logger.error(f"[ConvertError] empty output, group=[{k}], target={target}; preserving remote output")
+                    workflow.cleanup(os.path.join(PATH, "subconverter"), [dest_file, "generate.ini"])
+                    continue
 
                 mixed = target == "v2ray" or target == "mixed" or "ss" in target
                 if mixed and not utils.isb64encode(content=content):
@@ -338,18 +347,25 @@ def aggregate(args: argparse.Namespace) -> None:
         cost = "{:.2f}s".format(time.time() - starttime)
         logger.info(f"group [{k}] process finished, count: {len(nochecks)}, cost: {cost}")
 
-    # 先做失效订阅的 remark 回写, 再按本轮验活结果裁剪订阅池, 保证池内仅存确认可用的订阅
+    subscribes.update({url: True for url in alive_subs})
+    if checks_complete:
+        workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
+        if alive_snapshot and process_config.crawl:
+            item = process_config.storage.items.get(process_config.crawl.persist.nodes)
+            if pushtool.validate(item=item):
+                snapshot = clash.filter_proxies(alive_snapshot)["proxies"]
+                for node in snapshot:
+                    node.pop("sub_sources", None)
+                pushtool.push_to(content=yaml.safe_dump({"proxies": snapshot}, allow_unicode=True), item=item, group="verified-nodes")
+    else:
+        logger.warning("[UpdateInfo] skipping pool replacement because liveness checks were incomplete")
+
     workflow.refresh(
         config=process_config,
         push=pushtool,
         alives=dict(subscribes),
         skip_remark=args.skip_remark,
     )
-
-    if checks_complete:
-        workflow.filter_pool(config=process_config, push=pushtool, alives=alive_subs)
-    else:
-        logger.warning("[UpdateInfo] skipping pool replacement because liveness checks were incomplete")
 
 
 if __name__ == "__main__":
