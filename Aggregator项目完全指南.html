@@ -581,7 +581,7 @@
   <div class="note">
     <span class="nt">crawled-proxies.json(节点快照)有什么用?可以不要吗?</span>
     它是上轮<strong>验活存活节点</strong>的原始 YAML 列表。三个用途:① <strong>审计</strong>——不用翻 Clash 配置就知道上轮具体哪些节点活过、延迟多少;② <strong>给外部工具消费</strong>——Base64/URI 形态可直接喂给自建脚本或其他客户端;③ <strong>调试对照</strong>——和分组文件对比,确认“发布内容 = 验活结果”。<br>
-    对纯订阅用户确实用处不大,而且它是<strong>可选配置</strong>:把 <code>crawl.persist.nodes</code> 改成空字符串(或从 <code>storage.items</code> 删掉对应项)即可彻底关闭推送,不影响任何其他行为。<strong>注意</strong>:它是纯输出,没有任何机制会把它读回重新验活——关心旧节点持续可用性靠的是上面的 remains 回收。
+    对纯订阅用户确实用处不大,而且它是<strong>可选配置</strong>:把 <code>crawl.persist.nodes</code> 改成空字符串(或从 <code>storage.items</code> 删掉对应项)即可彻底关闭推送,不影响任何其他行为(<strong>本仓库 my-config.json 已默认关闭</strong>,远端 Gist 上的 crawled-proxies.json 也已删除)。<strong>注意</strong>:它是纯输出,没有任何机制会把它读回重新验活——关心旧节点持续可用性靠的是上面的 remains 回收。
   </div>
   <h3><span class="idx">4.6</span>结果以什么形式存在</h3>
   <ul style="padding-left:20px; max-width:75ch; color:var(--ink-2)">

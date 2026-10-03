@@ -7,7 +7,7 @@
         "include_nodes": true,
         "persist": {
             "subscribe": "crawledsubs",
-            "nodes": "crawledproxies"
+            "nodes": ""
         },
         "task": {
             "rename": "",

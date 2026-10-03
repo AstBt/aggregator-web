@@ -714,7 +714,7 @@ Configure specific airport websites or subscription links:
 
             "subscribe": "crawledsubs",   // Subscription storage key
 
-            "nodes": "crawledproxies"   // Proxy storage key
+            "nodes": ""                  // Proxy storage key; empty disables the snapshot push (disabled in this repo)
 
         },
 
