@@ -516,6 +516,8 @@ class GistConfig:
     exclude_owners: list[str] = field(default_factory=list)
     max_gists: int = 100
     max_filesize: int = 65536
+    patterns: list[str] = field(default_factory=list)
+    pages: int = 2
     task: TaskParams = field(default_factory=TaskParams)
 
     @classmethod
@@ -537,6 +539,8 @@ class GistConfig:
             exclude_owners=owners,
             max_gists=obj.integer("max_gists", default=100, minimum=1, maximum=5000) or 100,
             max_filesize=obj.integer("max_filesize", default=65536, minimum=1024) or 65536,
+            patterns=obj.string_list("patterns"),
+            pages=obj.integer("pages", default=2, minimum=1, maximum=10) or 2,
             task=TaskParams.parse(obj.field("task")),
         )
 
@@ -549,6 +553,8 @@ class GistConfig:
             "exclude_owners": list(self.exclude_owners),
             "max_gists": self.max_gists,
             "max_filesize": self.max_filesize,
+            "patterns": list(self.patterns),
+            "pages": self.pages,
             "task": self.task.to_dict(),
         }
 

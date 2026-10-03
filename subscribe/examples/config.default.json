@@ -142,7 +142,9 @@
             "exclude_owners": [],
             "max_gists": 100,
             "max_filesize": 65536,
-            "include": ""
+            "include": "",
+            "patterns": [],
+            "pages": 2
         }
     },
     "groups": {

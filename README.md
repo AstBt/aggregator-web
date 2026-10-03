@@ -93,7 +93,8 @@ graph LR
         "gist": {
             "enable": true,
             "push_to": ["free"],
-            "max_gists": 100
+            "max_gists": 100,
+            "pages": 2
         }
     },
     "groups": {

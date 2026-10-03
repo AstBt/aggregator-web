@@ -868,7 +868,12 @@ GH_TOKEN=your_github_token
 
 
 
-Scans recent public Gists and extracts subscription links from file contents. GitHub provides no Gist search API, so the public timeline (`GET /gists/public`) is used as the discovery surface.
+Extracts subscription links from Gists. Two discovery modes:
+
+- **Search mode (recommended)**: with `GH_COOKIE` (GitHub web session cookie) set, fetches `gist.github.com/search?q=...` result pages and parses gist IDs. GitHub has no gist search API, so this server-rendered page is the only precise entry — measured yield is far higher than timeline scanning;
+- **Timeline mode**: without a cookie, falls back to scanning recent public gists (`GET /gists/public`).
+
+Both modes read gist contents with `GH_TOKEN` or `PUSH_TOKEN`; no extra scope needed.
 
 
 

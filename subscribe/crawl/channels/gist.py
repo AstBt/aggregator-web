@@ -2,7 +2,9 @@
 
 import json
 import os
+import re
 import time
+import urllib.parse
 
 import utils
 from config.models import GistConfig
@@ -14,6 +16,9 @@ from logger import logger
 from origin import Origin
 
 GIST_API = "https://api.github.com"
+GIST_SEARCH = "https://gist.github.com/search"
+# 搜索结果页同时存在完整链接与相对路径 href(单/双引号)两种形式,取第二组为 gist id
+GIST_PATTERN = re.compile(r"""href=['"]/?([^/'"\s>#?]+)/([0-9a-f]{20,})""")
 
 
 def gist_headers() -> dict[str, str]:
@@ -23,6 +28,51 @@ def gist_headers() -> dict[str, str]:
     if token:
         headers["Authorization"] = f"Bearer {token}"
     return headers
+
+
+def search_gists(cookie: str, patterns: list[tuple[str, ...]], pages: int, max_gists: int) -> list[dict]:
+    """通过 gist 网页搜索(需登录态 cookie,服务端渲染)按模式发现 gist ID"""
+    headers = {
+        "User-Agent": utils.USER_AGENT,
+        "Cookie": f"user_session={cookie}",
+        "Accept": "text/html,application/xhtml+xml",
+    }
+    ids, seen = [], set()
+    for pattern in patterns:
+        query = utils.trim("+".join(f'"{word}"' for word in pattern))
+        if not query:
+            continue
+        for page in range(1, max(1, pages) + 1):
+            url = f"{GIST_SEARCH}?q={urllib.parse.quote(query, safe='')}&p={page}"
+            content = utils.http_get(url=url, headers=headers, timeout=20)
+            if utils.isblank(content):
+                break
+            found = GIST_PATTERN.findall(content)
+            if not found:
+                break
+            for pair in found:
+                gid = pair[-1] if isinstance(pair, tuple) else pair
+                if gid and gid not in seen:
+                    seen.add(gid)
+                    ids.append(gid)
+                    if len(ids) >= max_gists:
+                        return _fetch_by_ids(headers=gist_headers(), ids=ids)
+    return _fetch_by_ids(headers=gist_headers(), ids=ids)
+
+
+def _fetch_by_ids(headers: dict[str, str], ids: list[str]) -> list[dict]:
+    gists = []
+    for gid in ids:
+        content = utils.http_get(url=f"{GIST_API}/gists/{gid}", headers=headers, timeout=15)
+        if utils.isblank(content):
+            continue
+        try:
+            item = json.loads(content)
+        except Exception:
+            continue
+        if isinstance(item, dict) and item.get("id"):
+            gists.append(item)
+    return gists
 
 
 def list_public_gists(headers: dict[str, str], count: int, exclude_repos: list[str] | None = None) -> list[dict]:
@@ -95,9 +145,25 @@ def _extract_gist(
 def crawl_gist(config: GistConfig, ctx: CrawlContext) -> ChannelResult:
     headers = gist_headers()
     starttime = time.time()
-    gists = list_public_gists(headers=headers, count=config.max_gists)
+
+    cookie = utils.trim(os.environ.get("GH_COOKIE", ""))
+    if cookie and not utils.trim(os.environ.get("GH_TOKEN", "")) and not utils.trim(os.environ.get("PUSH_TOKEN", "")):
+        logger.error("[GistCrawl] cannot start crawl from gist because token is missing")
+        return ChannelResult()
+    if not cookie and utils.trim(os.environ.get("GH_TOKEN", "")) == "" and utils.trim(os.environ.get("PUSH_TOKEN", "")) == "":
+        logger.error("[GistCrawl] cannot start crawl from gist because token is missing")
+        return ChannelResult()
+
+    patterns = [tuple(p.split()) for p in (config.patterns or []) if utils.trim(p)]
+    patterns = patterns or [("/api/v1/client/subscribe?token=",), ("/link/", "?sub=1")]
+    if cookie:
+        gists = search_gists(cookie=cookie, patterns=patterns, pages=config.pages, max_gists=config.max_gists)
+        mode = "search"
+    else:
+        gists = list_public_gists(headers=headers, count=config.max_gists)
+        mode = "timeline"
     if not gists:
-        logger.error("[GistCrawl] cannot fetch public gists from github")
+        logger.error(f"[GistCrawl] cannot fetch gists from github, mode: {mode}")
         return ChannelResult()
 
     params = [[gist, headers, config, ctx.include_nodes] for gist in gists]
@@ -108,7 +174,7 @@ def crawl_gist(config: GistConfig, ctx: CrawlContext) -> ChannelResult:
             matched += 1
             result.merge(single)
     logger.info(
-        f"[GistCrawl] found {len(result.items)} subscriptions in {matched}/{len(gists)} gists, cost: {time.time() - starttime:.2f}s"
+        f"[GistCrawl] found {len(result.items)} subscriptions in {matched}/{len(gists)} gists, mode: {mode}, cost: {time.time() - starttime:.2f}s"
     )
     return result
 
@@ -117,9 +183,6 @@ class GistChannel(Channel[GistConfig]):
     name = "gist"
 
     def crawl(self, config: GistConfig, ctx: CrawlContext) -> ChannelResult:
-        if utils.isblank(os.environ.get("GH_TOKEN", "")) and utils.isblank(os.environ.get("PUSH_TOKEN", "")):
-            logger.error("[GistCrawl] cannot start crawl from gist because token is missing")
-            return ChannelResult()
         return crawl_gist(config, ctx)
 
 

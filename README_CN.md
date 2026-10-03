@@ -660,7 +660,12 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 
 #### 2.6 Gist 爬虫
 
-扫描最近的公开 Gist, 从文件内容中提取订阅链接。GitHub 没有 Gist 搜索 API, 因此采用公开时间线(`GET /gists/public`)方式发现。
+从 Gist 中提取订阅链接。两种发现模式:
+
+- **搜索模式(推荐)**:配置 `GH_COOKIE`(GitHub 网页登录态 cookie,浏览器 F12 复制 `user_session` 的值)后,按搜索模式抓取 `gist.github.com/search?q=...` 结果页(服务端渲染),解析出 gist ID 再取内容。GitHub 没有 gist 搜索 API,这是唯一精准入口,实测产出远高于时间线扫描;
+- **时间线模式**:无 cookie 时退化为扫描近期公开 gist(`GET /gists/public`)逐块读内容,覆盖面广但命中率低。
+
+两种模式读取 gist 内容都用 `GH_TOKEN` 或 `PUSH_TOKEN` 均可,**不需要额外申请权限**。
 
 **全局配置**：
 
@@ -671,8 +676,10 @@ GH_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
 | `include`       | string | 可选   | `""`       | 包含规则(正则)                |
 | `exclude`       | string | 可选   | `""`       | 排除规则(正则)                |
 | `exclude_owners`| array  | 可选   | `[]`       | 排除的 Gist 作者(regex 列表)  |
-| `max_gists`     | number | 可选   | `100`      | 每次扫描的 Gist 数量(1-5000)  |
+| `max_gists`     | number | 可选   | `100`      | 每次处理的 Gist 数量上限      |
 | `max_filesize`  | number | 可选   | `65536`    | 单个文件大小上限(字节)        |
+| `patterns`      | array  | 可选   | `[]`       | 搜索模式词表(空格分隔多词), 留空使用内置(/api/v1/client/subscribe?token= 与 /link/+?sub=1) |
+| `pages`         | number | 可选   | `2`        | 每种模式搜索的结果页数        |
 
 **示例配置**：
 ```json
