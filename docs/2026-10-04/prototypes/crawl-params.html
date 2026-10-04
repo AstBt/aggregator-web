@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>爬取参数 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .proxy-card{border:1.5px solid #ffd591;background:linear-gradient(180deg,#fffbf0,#fff)}
+  .proxy-card.on{border-color:#91caff;background:linear-gradient(180deg,#f6fbff,#fff)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item active" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">配置<span>/</span>爬取参数</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar op">O</span><span><span class="nm">zhangsan</span><br><span class="rl">操作员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout gray">📐 本页配置<b>全局爬取行为</b>（与具体爬取源解耦）；保存后对下一次创建的任务生效，不影响运行中的任务。爬取源管理请前往「爬取源配置」。<br>💾 本轮结果的写入位置与旧数据读取来源，统一由<b>创建任务时绑定的存储目标</b>决定（回测 / 爬取+聚合模式必填），存储目标本身在「结果存储」页管理。</div>
+
+      <!-- 过滤规则 -->
+      <div class="card">
+        <div class="card-hd"><h3>过滤规则</h3><span class="extra">对所有源生效</span></div>
+        <div class="callout gray" style="margin-bottom:14px">合并顺序：<b>源级 exclude</b>（最高）→ <b>任务级默认过滤</b> → <b>全局 exclude</b>（最低），命中任一层即丢弃；include 同理。源级「忽略全局规则」开关可单独关闭继承。</div>
+        <div class="form-item full" style="margin-bottom:14px">
+          <label>全局排除正则 <span class="hint">exclude · 命中即丢弃该订阅</span></label>
+          <input class="input mono" value="">
+        </div>
+        <div class="form-grid">
+          <div class="form-item">
+            <label>默认包含正则 <span class="hint">task.include</span></label>
+            <input class="input mono" placeholder="留空表示不限制">
+          </div>
+          <div class="form-item">
+            <label>默认排除正则 <span class="hint">task.exclude</span></label>
+            <input class="input mono" placeholder="留空表示不限制">
+          </div>
+        </div>
+        <div style="display:flex;gap:22px;flex-wrap:wrap;margin-top:2px">
+          <label class="checkbox"><input type="checkbox" checked> 结果包含原始节点（include_nodes）</label>
+          <label class="checkbox"><input type="checkbox"> 忽略默认排除规则（ignore_default_exclude）</label>
+        </div>
+      </div>
+
+      <!-- 失败与重试 -->
+      <div class="card">
+        <div class="card-hd"><h3>失败与重试</h3></div>
+        <div class="slider-row">
+          <div class="s-lb">最大连续失败次数<small>max_fails · 超过后暂时移出订阅池</small></div>
+          <input type="range" min="1" max="20" value="5" oninput="onSlide(this)">
+          <div class="s-val">5</div>
+        </div>
+        <div class="slider-row">
+          <div class="s-lb">单源最大重试<small>per-source retry</small></div>
+          <input type="range" min="0" max="5" value="2" oninput="onSlide(this)">
+          <div class="s-val">2</div>
+        </div>
+        <div class="slider-hint" style="margin-top:10px">订阅连续失败达到上限后进入待验证区，若后续重新可用将自动回归订阅池。</div>
+      </div>
+
+      <!-- 本地代理 -->
+      <div class="card proxy-card on" id="proxyCard">
+        <div class="card-hd">
+          <h3>🌐 本地代理</h3>
+          <div class="test-conn">
+            <span class="test-result" id="proxyResult" style="display:none"></span>
+            <button class="btn sm" onclick="testProxy(this)">🔌 测试连接</button>
+          </div>
+        </div>
+        <div class="sw-row" style="margin-bottom:14px">
+          <span class="switch on" id="proxySwitch" onclick="toggleProxy()"></span>
+          <div>
+            <div style="font-size:13px;font-weight:500">启用代理（用于被墙数据源的直连回退）</div>
+            <div class="slider-hint">仅对需要访问境外站点（GitHub/Gist/Google 等）的爬取渠道生效</div>
+          </div>
+        </div>
+        <div class="form-grid">
+          <div class="form-item">
+            <label>代理地址 <span class="hint">http / socks5</span></label>
+            <input class="input mono" value="http://127.0.0.1:7897" id="proxyAddr">
+          </div>
+          <div class="form-item">
+            <label>代理测试 URL <span class="hint">连通性验证地址</span></label>
+            <input class="input mono" value="https://api.github.com/zen">
+          </div>
+        </div>
+      </div>
+
+      <!-- 操作区 -->
+      <div class="card">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" onclick="alert('原型示意：爬取参数已保存，对下一次任务生效')">保存参数</button>
+          <button class="btn" onclick="alert('原型示意：恢复默认值')">恢复默认</button>
+          <span style="flex:1"></span>
+          <button class="btn" onclick="alert('原型示意：从 my-config.json 的 crawl 节导入')">⤒ 导入配置</button>
+          <button class="btn" onclick="alert('原型示意：导出当前爬取参数为 JSON')">⤓ 导出配置</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+function onSlide(el){
+  const pct=(el.value-el.min)/(el.max-el.min)*100;
+  el.style.setProperty('--fill',pct+'%');
+  el.parentElement.querySelector('.s-val').textContent=el.value;
+}
+document.querySelectorAll('.slider-row input[type=range]').forEach(el=>{
+  const sync=()=>{const pct=(el.value-el.min)/(el.max-el.min)*100;el.style.setProperty('--fill',pct+'%');el.parentElement.querySelector('.s-val').textContent=el.value;};
+  sync();el.addEventListener('input',sync);
+});
+function toggleProxy(){
+  const sw=document.getElementById('proxySwitch');
+  const card=document.getElementById('proxyCard');
+  sw.classList.toggle('on');
+  card.classList.toggle('on',sw.classList.contains('on'));
+}
+/* 测试连接子组件：idle → testing → ok/fail */
+function testProxy(btn){
+  const r=document.getElementById('proxyResult');
+  r.style.display='inline-flex';r.className='test-result testing';
+  r.innerHTML='<span class="spin" style="border-color:rgba(9,88,217,.3);border-top-color:#0958d9"></span>正在测试…';
+  btn.disabled=true;
+  setTimeout(()=>{
+    btn.disabled=false;
+    const ok=Math.random()>0.25;
+    r.className='test-result '+(ok?'ok':'fail');
+    r.textContent=ok?'连通正常 · 212ms · HTTP 200':'连接失败 · ECONNREFUSED · 122ms';
+  },1200);
+}
+</script>
+</body>
+</html>

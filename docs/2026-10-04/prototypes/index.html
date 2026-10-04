@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>原型索引 - Aggregator Web 管理平台 PRD</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .wrap{max-width:1080px;margin:0 auto;padding:52px 32px}
+  .hd{display:flex;align-items:center;gap:14px;margin-bottom:8px}
+  .hd .mark{width:46px;height:46px;border-radius:10px;background:var(--primary);display:flex;align-items:center;justify-content:center;font-size:22px}
+  .hd h1{font-size:26px;font-weight:700}
+  .sub{color:var(--text-3);font-size:13.5px;margin-bottom:32px}
+  .sub a{color:var(--primary);text-decoration:none}
+  .sub a:hover{text-decoration:underline}
+  .grp{font-size:12px;color:var(--text-3);letter-spacing:1px;margin:22px 0 10px}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .item{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;display:flex;gap:15px;align-items:flex-start;transition:box-shadow .2s,transform .2s;text-decoration:none;color:inherit}
+  .item:hover{box-shadow:0 6px 20px rgba(0,0,0,.08);transform:translateY(-2px)}
+  .item .ico{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+  .item h3{font-size:14.5px;font-weight:600;margin-bottom:4px;display:flex;align-items:center;gap:8px}
+  .item p{font-size:12.5px;color:var(--text-3);line-height:1.65}
+  .item .go{margin-top:8px;font-size:12.5px;color:var(--primary);font-weight:500}
+  .new{font-size:10px;color:#fff;background:var(--primary);border-radius:4px;padding:1px 6px;font-weight:500}
+  .note{margin-top:28px;background:#f0f7ff;border:1px solid #bae0ff;border-radius:10px;padding:14px 18px;font-size:12.5px;color:var(--info-tx);line-height:1.85}
+  @media (max-width:760px){.grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="hd"><span class="mark">🛰️</span><h1>Aggregator Web 管理平台 · HTML 原型</h1></div>
+  <p class="sub">基于 Vue Vben Admin 5.x（ant-design-vue）设计语言 · 2026-10-04 · v2.0 · 需求文档见 <a href="../PRD.md">../PRD.md</a> · 静态数据演示，按钮均为示意交互</p>
+
+  <div class="grp">控制台</div>
+  <div class="grid">
+    <a class="item" href="login.html">
+      <span class="ico" style="background:#e6f4ff">🔐</span>
+      <div><h3>登录页</h3><p>管理员账号密码登录；无注册入口、无第三方登录。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="dashboard.html">
+      <span class="ico" style="background:#f6ffed">📊</span>
+      <div><h3>仪表盘</h3><p>可用订阅/节点指标、存储目标状态、协议与地区分布、最近任务、源健康概览。</p><div class="go">打开原型 →</div></div>
+    </a>
+  </div>
+
+  <div class="grp">配置</div>
+  <div class="grid">
+    <a class="item" href="sources.html">
+      <span class="ico" style="background:#fff7e6">🧩</span>
+      <div><h3>爬取源配置</h3><p>8 类爬取源的增删改查、启停、测试连接、导入导出；动态表单按类型渲染。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="crawl-params.html">
+      <span class="ico" style="background:#e6fffb">📐</span>
+      <div><h3>爬取参数</h3><p>全局排除规则、失败重试滑块、本地代理（含测试连接）。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="alive-params.html">
+      <span class="ico" style="background:#fff2f0">💓</span>
+      <div><h3>验活参数</h3><p>验活超时/间隔/线程滑块、测试 URL 连通性检测、高级选项。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="storage.html">
+      <span class="ico" style="background:#f9f0ff">💾</span>
+      <div><h3>结果存储</h3><p>六类存储目标（本地/Gist/PasteGG/Pastefy/Imperial/QBin）管理：创建、编辑、启停、删除、测试连接；写入策略与磁盘占用。</p><div class="go">打开原型 →</div></div>
+    </a>
+  </div>
+
+  <div class="grp">运行</div>
+  <div class="grid">
+    <a class="item" href="tasks.html">
+      <span class="ico" style="background:#f0f7ff">⚙️</span>
+      <div><h3>任务管理</h3><p>列表-详情主从布局：点击任务查看阶段进度、实时日志、统计与产物；「创建任务」弹窗配置模式与参数（滑块）。</p><div class="go">打开原型 →</div></div>
+    </a>
+  </div>
+
+  <div class="grp">结果</div>
+  <div class="grid">
+    <a class="item" href="subscriptions.html">
+      <span class="ico" style="background:#e6fffb">📡</span>
+      <div><h3>订阅结果</h3><p>订阅池筛选（来源/状态/轮次）、详情抽屉含贡献节点与 10 轮存活趋势。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="nodes.html">
+      <span class="ico" style="background:#fff2f0">🌐</span>
+      <div><h3>节点浏览</h3><p>多维筛选（协议/地区/延迟/存活）、本地产物下载、按客户端类型（Clash/V2Ray/SingBox）导出并转换。</p><div class="go">打开原型 →</div></div>
+    </a>
+  </div>
+
+  <div class="grp">系统</div>
+  <div class="grid">
+    <a class="item" href="users.html">
+      <span class="ico" style="background:#e6f4ff">👥</span>
+      <div><h3>用户管理</h3><p>RBAC 三角色（管理员/操作员/只读）用户创建、启停、删除；角色权限矩阵与操作审计。</p><div class="go">打开原型 →</div></div>
+    </a>
+    <a class="item" href="settings.html">
+      <span class="ico" style="background:#f5f5f5">🔧</span>
+      <div><h3>系统设置</h3><p>我的账号、修改密码、关于（运行/存储参数已移至配置板块独立菜单）。</p><div class="go">打开原型 →</div></div>
+    </a>
+  </div>
+
+  <div class="note">
+    💡 原型为静态演示数据；全部页面独立可开（样式表 assets/app.css 与页面同目录，双击可看，无外部依赖）。<br>
+    v2.0 变化：新增用户管理（RBAC）；任务管理改为列表+详情+创建弹窗；取消节点/订阅分组；节点导出按客户端类型转换；爬取参数/验活参数/结果存储各自独立成页。<br>
+    详细功能定义、数据模型、验收标准请查阅 <a href="../PRD.md" style="color:inherit;font-weight:600">PRD.md</a>。
+  </div>
+</div>
+</body>
+</html>

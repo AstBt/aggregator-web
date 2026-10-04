@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>任务管理 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  /* 页面专属 */
+  .task-layout{display:grid;grid-template-columns:minmax(430px,1.05fr) 1.4fr;gap:16px;align-items:start}
+  .task-row{cursor:pointer}
+  .detail-actions{display:flex;gap:8px;align-items:center}
+  .run-meta{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
+  .detail-tabs{display:flex;gap:18px;border-bottom:1px solid var(--border);margin:14px 0 12px}
+  .detail-tabs .dt{padding:8px 2px;font-size:13px;color:var(--text-2);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+  .detail-tabs .dt.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:600}
+  .log-pane{height:340px}
+  .param-list{font-size:13px}
+  @media (max-width:1280px){.task-layout{grid-template-columns:1fr}}
+
+  /* ===== 源分组选择器（子组件） ===== */
+  .scope-summary{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--text-2);margin-bottom:12px;flex-wrap:wrap}
+  .grp-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  .grp-card{border:1.5px solid var(--border);border-radius:10px;padding:13px 14px;cursor:pointer;transition:all .15s;background:#fff;position:relative}
+  .grp-card:hover{border-color:#91caff}
+  .grp-card.sel{border-color:var(--primary);background:#f0f7ff;box-shadow:0 0 0 3px rgba(22,119,255,.08)}
+  .grp-card .g-ico{width:36px;height:36px;border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:17px;margin-bottom:8px}
+  .grp-card h5{font-size:13px;font-weight:600;margin-bottom:2px}
+  .grp-card p{font-size:11px;color:var(--text-3)}
+  .grp-card .g-state{position:absolute;top:10px;right:10px;width:18px;height:18px;border-radius:5px;border:1.5px solid #d9d9d9;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff;background:#fff}
+  .grp-card.sel .g-state{background:var(--primary);border-color:var(--primary)}
+  .grp-card.partial .g-state{background:var(--primary);border-color:var(--primary);opacity:.55}
+  .grp-detail{margin-top:12px;border:1px dashed #d9d9d9;border-radius:9px;padding:12px 14px;background:#fafbfc}
+  .grp-detail .gd-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12.5px;color:var(--text-2)}
+  .grp-detail label{display:flex;align-items:center;gap:9px;padding:6px 2px;font-size:12.5px;border-bottom:1px dashed #eee}
+  .grp-detail label:last-child{border-bottom:none}
+  .grp-detail .t{font-size:11px;color:var(--text-3);margin-left:auto}
+  /* ===== 定时构建器（子组件） ===== */
+  .sched-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .sched-opt{border:1.5px solid var(--border);border-radius:9px;padding:11px 13px;cursor:pointer;transition:all .15s;background:#fff;font-size:12.5px;display:flex;align-items:center;gap:9px}
+  .sched-opt:hover{border-color:#91caff}
+  .sched-opt.sel{border-color:var(--primary);background:#f0f7ff;font-weight:500}
+  .sched-opt .so-ico{font-size:15px}
+  .sched-fields{margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
+  .stepper{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:#fff}
+  .stepper button{width:30px;height:32px;border:none;background:#fff;cursor:pointer;font-size:15px;color:var(--text-2)}
+  .stepper button:hover{background:#f2f3f5;color:var(--primary)}
+  .stepper input{width:46px;height:32px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:13px}
+  .time-input{height:32px;border:1px solid var(--border);border-radius:7px;padding:0 10px;font-size:13px;background:#fff}
+  .week-pick{display:inline-flex;gap:6px}
+  .week-pick span{width:32px;height:32px;border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;background:#fff;color:var(--text-2)}
+  .week-pick span.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+  .sched-preview{background:#f6f9ff;border:1px dashed #bfd8ff;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#0958d9;margin-top:12px}
+  /* ===== 存储目标绑定卡片（大图标+多选） ===== */
+  .bind-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .bind-card{border:1.5px solid var(--border);border-radius:10px;padding:14px 15px;cursor:pointer;transition:all .15s;background:#fff;position:relative}
+  .bind-card:hover{border-color:#91caff}
+  .bind-card.sel{border-color:var(--primary);background:#f0f7ff;box-shadow:0 0 0 3px rgba(22,119,255,.08)}
+  .bind-card.disabled{opacity:.55;cursor:not-allowed}
+  .bind-card.disabled:hover{border-color:var(--border)}
+  .bind-card .b-ico{width:38px;height:38px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:18px;margin-bottom:9px}
+  .bind-card h5{font-size:13.5px;font-weight:600;margin-bottom:2px;display:flex;align-items:center;gap:7px}
+  .bind-card p{font-size:11.5px;color:var(--text-3);line-height:1.5}
+  .bind-card .b-check{position:absolute;top:11px;right:11px;width:18px;height:18px;border-radius:5px;border:1.5px solid #d9d9d9;background:#fff;display:flex;align-items:center;justify-content:center;font-size:11px;color:#fff}
+  .bind-card.sel .b-check{background:var(--primary);border-color:var(--primary)}
+  .bind-card .b-src{position:absolute;bottom:11px;right:11px;font-size:11px;color:var(--primary);border:1px solid #91caff;background:#fff;border-radius:10px;padding:1px 9px;display:flex;align-items:center;gap:4px;cursor:pointer}
+  .bind-card .b-src input{accent-color:var(--primary);width:12px;height:12px}
+  @media (max-width:1280px){.grp-grid{grid-template-columns:repeat(3,1fr)}.bind-grid{grid-template-columns:1fr 1fr}.sched-grid{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item active" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">运行<span>/</span>任务管理</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar op">O</span><span><span class="nm">zhangsan</span><br><span class="rl">操作员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="task-layout">
+
+        <!-- ======== 左：任务列表 ======== -->
+        <section class="card" style="position:sticky;top:78px">
+          <div class="card-hd">
+            <h3>任务列表</h3>
+            <button class="btn primary sm" onclick="openCreate()">＋ 创建任务</button>
+          </div>
+          <div class="seg" id="statusSeg" style="margin-bottom:12px">
+            <button class="on" data-s="all">全部</button><button data-s="running">运行中</button><button data-s="success">成功</button><button data-s="failed">失败</button>
+          </div>
+          <div class="tbl-wrap" style="max-height:640px;overflow-y:auto">
+            <table class="tbl">
+              <thead><tr><th>ID</th><th>模式</th><th>触发</th><th>状态</th><th>阶段</th><th>开始时间</th></tr></thead>
+              <tbody id="taskBody"></tbody>
+            </table>
+          </div>
+          <div class="pager"><span id="listCount">共 6 条</span><span>‹ 1 / 1 ›</span></div>
+        </section>
+
+        <!-- ======== 右：任务详情 ======== -->
+        <section class="card">
+          <div class="card-hd">
+            <h3 id="d-title">#1043 · 仅爬取</h3>
+            <div class="detail-actions">
+              <span id="d-status"></span>
+              <button class="btn sm danger" id="d-cancel" onclick="cancelTask()">⏹ 取消任务</button>
+              <button class="btn sm" onclick="alert('原型示意：导出该任务日志')">⤓ 日志</button>
+            </div>
+          </div>
+
+          <div class="stage-line" id="stageLine">
+            <div class="stage" data-s="init"><span class="s-dot">1</span>初始化</div>
+            <div class="stage" data-s="crawl"><span class="s-dot">2</span>爬取源</div>
+            <div class="stage" data-s="validate"><span class="s-dot">3</span>订阅验证</div>
+            <div class="stage" data-s="fetch"><span class="s-dot">4</span>节点拉取</div>
+            <div class="stage" data-s="check"><span class="s-dot">5</span>验活</div>
+            <div class="stage" data-s="convert"><span class="s-dot">6</span>转换</div>
+            <div class="stage" data-s="publish"><span class="s-dot">7</span>发布</div>
+          </div>
+          <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-3);margin-top:8px">
+            <span id="d-progress-text">订阅验证 37 / 68</span>
+            <span>已运行 <b id="d-elapsed">00:48</b></span>
+          </div>
+          <div class="pbar" style="margin-top:6px"><i id="d-pbar" style="width:54%"></i></div>
+
+          <div class="run-meta" id="d-chips"></div>
+
+          <div class="detail-tabs" id="detailTabs">
+            <div class="dt on" data-p="log">实时日志</div>
+            <div class="dt" data-p="params">运行参数</div>
+            <div class="dt" data-p="arts">产物</div>
+          </div>
+
+          <div id="pane-log">
+            <div class="log-ctl" style="margin-bottom:10px">
+              <label class="checkbox"><input type="checkbox" checked id="autoscroll"> 自动滚动</label>
+              <label class="checkbox"><input type="checkbox" id="onlywarn"> 仅看警告/错误</label>
+              <span class="btn sm" onclick="document.getElementById('logbox').innerHTML=''">清屏</span>
+              <span class="chip" style="padding:3px 10px"><span class="dot-live"></span>实时</span>
+            </div>
+            <div class="log-box log-pane" id="logbox"></div>
+          </div>
+
+          <div id="pane-params" style="display:none">
+            <div class="param-list" id="d-params"></div>
+          </div>
+
+          <div id="pane-arts" style="display:none">
+            <div id="d-arts"></div>
+          </div>
+        </section>
+      </div>
+
+      <!-- ======== 定时任务管理 ======== -->
+      <section class="card">
+        <div class="card-hd">
+          <h3>定时任务</h3>
+          <button class="btn primary sm" onclick="openSchedule()">＋ 新建定时</button>
+        </div>
+        <div class="callout gray" style="margin-bottom:14px">在创建任务弹窗选择「定时执行」即保存为定时任务（不立即产生 run）；下方列表可随时编辑参数、暂停或删除。周期为人类可读的间隔描述，无需填写 cron 表达式。</div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>周期</th><th>模式</th><th>绑定目标</th><th>启用</th><th>下次执行</th><th>上次结果</th><th style="width:140px">操作</th></tr></thead>
+            <tbody>
+              <tr><td><b>每日上午</b></td><td>每天 11:05</td><td>爬取+聚合</td><td class="mono" style="font-size:11.5px">data-local + gist-main</td><td><span class="switch on" onclick="this.classList.toggle('on')"></span></td><td class="muted">明天 11:05</td><td><span class="tag ok">成功 · 今天 11:05</span></td><td class="acts"><a class="btn link">编辑</a><a class="btn link" style="color:var(--error)">删除</a></td></tr>
+              <tr><td><b>每日下午</b></td><td>每天 03:05</td><td>爬取+聚合</td><td class="mono" style="font-size:11.5px">data-local</td><td><span class="switch on" onclick="this.classList.toggle('on')"></span></td><td class="muted">明天 03:05</td><td><span class="tag ok">成功 · 昨天 03:05</span></td><td class="acts"><a class="btn link">编辑</a><a class="btn link" style="color:var(--error)">删除</a></td></tr>
+              <tr><td><b>高频探活</b></td><td>每 6 小时</td><td>回测</td><td class="mono" style="font-size:11.5px">data-local</td><td><span class="switch on" onclick="this.classList.toggle('on')"></span></td><td class="muted">今天 20:00</td><td><span class="tag ok">成功 · 今天 14:00</span></td><td class="acts"><a class="btn link">编辑</a><a class="btn link" style="color:var(--error)">删除</a></td></tr>
+              <tr><td><b>周末巡检</b></td><td>每周六 09:00</td><td>仅爬取</td><td class="mono" style="font-size:11.5px">—（仅爬取不绑定）</td><td><span class="switch" onclick="this.classList.toggle('on')"></span></td><td class="muted">已停用</td><td><span class="tag gray">未执行</span></td><td class="acts"><a class="btn link">编辑</a><a class="btn link" style="color:var(--error)">删除</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 创建任务弹窗 ================= -->
+<div class="modal-mask" id="createModal">
+  <div class="modal wide">
+    <div class="modal-hd">
+      <h3>创建任务</h3>
+      <span class="close-x" onclick="closeCreate()">✕</span>
+    </div>
+    <div class="modal-bd">
+      <!-- 运行模式 -->
+      <div class="section-title">运行模式</div>
+      <div class="radio-cards c3" id="modeCards">
+        <div class="radio-card" data-m="crawl"><h5>🕷️ 仅爬取</h5><p>跑取源并验证订阅，结果入系统库；不绑定存储目标</p></div>
+        <div class="radio-card" data-m="aggregate"><h5>🧬 回测</h5><p>不爬取：从系统库读上轮订阅池与 remains → 重新拉取 → 验活 → 写入绑定目标</p></div>
+        <div class="radio-card sel" data-m="full"><h5>⚡ 爬取 + 聚合</h5><p>完整流程：爬取 → 与旧订阅池合并 → 验活 → 转换 → 写入绑定目标</p></div>
+      </div>
+
+      <!-- 运行参数 -->
+      <div class="section-title" style="margin-top:18px">运行参数（默认值取自验活参数页，可临时覆盖）</div>
+      <div class="form-grid c3">
+        <div class="form-item" style="grid-column:1/-1">
+          <div class="slider-row">
+            <div class="s-lb">线程数<small>num_threads</small></div>
+            <input type="range" min="1" max="128" value="64" id="slThreads" oninput="onSlide(this)">
+            <div class="s-val" id="vThreads">64</div>
+          </div>
+          <div class="slider-row">
+            <div class="s-lb">最大存活延迟<small>delay · 阈值，实测超过即判失效</small></div>
+            <input type="range" min="500" max="15000" step="500" value="5000" id="slDelay" oninput="onSlide(this)">
+            <div class="s-val" id="vDelay" data-unit="ms">5000 <small>ms</small></div>
+          </div>
+          <div class="slider-row">
+            <div class="s-lb">验活超时<small>timeout · 单次探测最长等待</small></div>
+            <input type="range" min="500" max="30000" step="500" value="5000" id="slTimeout" oninput="onSlide(this)">
+            <div class="s-val" id="vTimeout" data-unit="ms">5000 <small>ms</small></div>
+          </div>
+          <div class="slider-hint">提示：线程数过高可能触发 mihomo 控制器压力，建议 ≤ 64；验活使用的探测地址统一在「验活参数」页配置，此处不再重复设置。</div>
+        </div>
+      </div>
+
+      <!-- 存储目标绑定 -->
+      <div class="section-title" style="margin-top:18px">存储目标绑定 <span style="font-weight:400;font-size:12px;color:var(--text-3)">回测 / 爬取+聚合模式必填</span></div>
+      <div id="bindNone" style="display:none" class="callout gray">
+        仅爬取模式<b>不绑定存储目标</b>：本轮抓取并验证的订阅写入系统库供浏览，不推送任何目标、不读取旧数据。
+      </div>
+      <div id="bindBox">
+        <div class="callout gray" style="margin-bottom:12px">
+          🔌 点击卡片选择本轮<b>写入</b>目标（可多选）。旧数据（订阅池 / remains）一律来自<b>系统库</b>，与绑定目标无关。<br>
+          绑定多个目标时，验活结果（转换产物、快照镜像）将<b>分别完整写入每一个绑定目标</b>；发布为准原子流程——全部写成功任务才置成功，中断或部分失败后可在任务详情「重试发布」对失败目标补偿重放。
+        </div>
+        <div class="bind-grid" id="bindCards"></div>
+      </div>
+
+      <!-- 执行范围 -->
+      <div class="section-title" style="margin-top:18px">执行范围 <span style="font-weight:400;font-size:12px;color:var(--text-3)">按源类型分组选择，组内可细分</span></div>
+      <div id="scopeAgg" style="display:none" class="callout gray">回测模式不执行爬取，沿用系统库中的上轮订阅池与 remains。</div>
+      <div id="scopeCrawl">
+        <div class="scope-summary">
+          <span id="scopeCount">已选 12 / 12 个源</span>
+          <a class="btn link" onclick="scopeAll(true)">全选</a>
+          <a class="btn link" onclick="scopeAll(false)">全不选</a>
+        </div>
+        <div class="grp-grid" id="grpGrid"></div>
+        <div class="grp-detail" id="grpDetail" style="display:none">
+          <div class="gd-hd"><span id="gdTitle"></span><a class="btn link" onclick="grpToggleAll()">全选 / 反选</a></div>
+          <div id="gdList"></div>
+        </div>
+      </div>
+
+      <!-- 执行方式 -->
+      <div class="section-title" style="margin-top:18px">执行方式</div>
+      <div class="radio-cards c2" id="runCards">
+        <div class="radio-card sel" onclick="selRun(this,'now')"><h5>▶ 立即执行</h5><p>提交后立即开始运行</p></div>
+        <div class="radio-card" onclick="selRun(this,'cron')"><h5>⏰ 定时执行</h5><p>按间隔周期自动触发，图形化选择间隔，无需手写表达式</p></div>
+      </div>
+
+      <!-- 定时构建器 -->
+      <div id="schedBox" style="display:none;margin-top:14px">
+        <div class="sched-grid" id="schedGrid">
+          <div class="sched-opt sel" data-k="minute"><span class="so-ico">⏱️</span>分钟级 · 每 N 分钟</div>
+          <div class="sched-opt" data-k="hour"><span class="so-ico">🕐</span>小时级 · 每 N 小时</div>
+          <div class="sched-opt" data-k="day"><span class="so-ico">📅</span>天级 · 每 N 天</div>
+          <div class="sched-opt" data-k="week"><span class="so-ico">🗓️</span>周级 · 每 N 周</div>
+          <div class="sched-opt" data-k="daily"><span class="so-ico">🌅</span>每天几点</div>
+          <div class="sched-opt" data-k="weekly"><span class="so-ico">📆</span>每周几</div>
+        </div>
+        <div class="sched-fields" id="schedFields"></div>
+        <div class="sched-preview" id="schedPreview"></div>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <span class="muted" style="margin-right:auto;font-size:12px" id="bindSummary"></span>
+      <button class="btn" onclick="closeCreate()">取消</button>
+      <button class="btn primary" onclick="submitTask()">创建任务</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= 数据 ================= */
+const TASKS=[
+  {id:1043,mode:"仅爬取",modeKey:"crawl",trigger:"手动",status:"running",stage:"validate",prog:"订阅验证 37 / 68",progPct:54,started:"今天 14:02",elapsed:48,
+   chips:[["6/6","Telegram 频道完成"],["18","新订阅候选"],["+2","新增去重订阅"],["1","连续失败源"]],
+   params:{模式:"仅爬取 (crawl)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"—（仅爬取不绑定）"},
+   arts:[],
+   logs:[["INFO","process.py","load configuration from local file"],["INFO","crawl.engine","channels: telegram(6) github(1) gist(1) page(1) script(3)"],["INFO","crawl.telegram","channel oneclickvpnkeys finished, found subscribes=6"],["INFO","crawl.github","keyword search finished, found subscribes=15"],["INFO","crawl.gist","scan timeline finished, pages=2, gists=100, found=10"],["WARNING","crawl.script","plugin scaner returned no result, continuous fails: 3"],["INFO","crawl.engine","collapse subscribes, total=68, pending=68"],["INFO","crawl.helpers","start to validate 68 subscriptions, threads=50"],["INFO","crawl.helpers","billing subscription available: 37"],["INFO","crawl.helpers","subscription unavailable: 29"]]},
+  {id:1042,mode:"爬取+聚合",modeKey:"full",trigger:"定时",status:"success",stage:"done",prog:"100%",progPct:100,started:"今天 11:05",elapsed:134,
+   chips:[["+6 / 41","订阅 新增/存活"],["1256","抓取节点"],["612","存活节点"],["3","产物"]],
+   params:{模式:"爬取+聚合 (full)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"data-local + gist-main",旧数据来源:"系统库（上轮存活节点 589 + 订阅池 35）"},
+   arts:[["clash","free-clash.yaml","89.4 KB"],["v2ray","free-v2ray.txt","54.1 KB"],["singbox","free-singbox.json","96.8 KB"]],
+   logs:[["INFO","pipeline.check","proxies check finished, total: 1256, alive: 612, dead: 644"],["INFO","subconverter","convert target=clash success, nodes=612"],["INFO","push.local","artifact saved to data/local/free-clash.yaml"],["INFO","workflow.filter_pool","published verified subscription pool: kept=41"],["INFO","runner","run #1042 finished, cost=134.10s, status=success"]]},
+  {id:1041,mode:"仅爬取",modeKey:"crawl",trigger:"手动",status:"success",stage:"done",prog:"100%",progPct:100,started:"今天 09:12",elapsed:48,
+   chips:[["+5 / 41","订阅 新增/存活"]],
+   params:{模式:"仅爬取 (crawl)",线程数:32,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"—（仅爬取不绑定）"},
+   arts:[],
+   logs:[["INFO","crawl.engine","crawl finished, total=66, kept=41"],["INFO","runner","run #1041 finished, cost=48.02s, status=success"]]},
+  {id:1040,mode:"爬取+聚合",modeKey:"full",trigger:"手动",status:"failed",stage:"check",prog:"验活阶段中断",progPct:62,started:"昨天 20:41",elapsed:31,
+   chips:[["+5 / 35","订阅 新增/存活"],["0","存活节点"]],
+   params:{模式:"爬取+聚合 (full)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"data-local + gist-main",旧数据来源:"系统库"},
+   arts:[],
+   logs:[["ERROR","clash.ControllerError","group [free] liveness infrastructure failed: controller timeout"],["ERROR","runner","run #1040 failed, cost=31.20s, error=ControllerError"]]},
+  {id:1039,mode:"爬取+聚合",modeKey:"full",trigger:"定时",status:"success",stage:"done",prog:"100%",progPct:100,started:"昨天 11:05",elapsed:122,
+   chips:[["+4 / 35","订阅 新增/存活"],["1190","抓取节点"],["589","存活节点"],["3","产物"]],
+   params:{模式:"爬取+聚合 (full)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源的 Telegram/GitHub 组",绑定目标:"data-local + gist-main",旧数据来源:"系统库"},
+   arts:[["clash","free-clash.yaml","84.9 KB"],["v2ray","free-v2ray.txt","51.2 KB"],["singbox","free-singbox.json","92.4 KB"]],
+   logs:[["INFO","pipeline.check","proxies check finished, total: 1190, alive: 589, dead: 601"],["INFO","runner","run #1039 finished, cost=122.40s, status=success"]]},
+  {id:1038,mode:"爬取+聚合",modeKey:"full",trigger:"手动",status:"cancelled",stage:"check",prog:"验活阶段取消",progPct:48,started:"昨天 02:15",elapsed:63,
+   chips:[["+4 / 35","订阅 新增/存活"],["412","存活节点"]],
+   params:{模式:"爬取+聚合 (full)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"data-local",旧数据来源:"系统库"},
+   arts:[],
+   logs:[["WARNING","runner","cancel requested by zhangsan"],["INFO","runner","run #1038 cancelled at safe point, cost=63.00s"]]},
+  {id:1037,mode:"爬取+聚合",modeKey:"full",trigger:"手动",status:"partial-success",stage:"publish",prog:"发布中断 · 1/2 目标",progPct:94,started:"前天 14:20",elapsed:126,
+   chips:[["+3 / 33","订阅 新增/存活"],["1042","抓取节点"],["501","存活节点"],["3","产物"]],
+   params:{模式:"爬取+聚合 (full)",线程数:64,最大存活延迟:"5000 ms",验活超时:"5000 ms",执行范围:"全部启用源 (12)",绑定目标:"data-local + gist-main",旧数据来源:"系统库"},
+   publish_pending:["gist-main"],
+   arts:[["clash","free-clash.yaml","78.2 KB"],["v2ray","free-v2ray.txt","47.6 KB"],["singbox","free-singbox.json","88.1 KB"]],
+   logs:[["INFO","pipeline.check","proxies check finished, total: 1042, alive: 501, dead: 541"],["INFO","subconverter","convert target=clash success, nodes=501"],["INFO","push.local","artifact saved to data/local/free-clash.yaml"],["WARNING","push.gist","gist-main write failed: HTTP 429, marked publish_pending"],["INFO","web.publish","run #1037 partial-success, pending targets: [gist-main]"]]},
+];
+const STAGE_ORDER=["init","crawl","validate","fetch","check","convert","publish"];
+const STATUS_TAG={running:'<span class="tag info"><span class="dot-live" style="background:currentColor;animation:none"></span>运行中</span>',success:'<span class="tag ok">成功</span>',failed:'<span class="tag err">失败</span>',cancelled:'<span class="tag gray">已取消</span>',pending:'<span class="tag warn">等待中</span>','partial-success':'<span class="tag warn">部分发布</span>'};
+let current=TASKS[0], filter='all', logTimer=null;
+
+/* ================= 任务列表/详情 ================= */
+function renderList(){
+  const body=document.getElementById('taskBody');
+  const items=TASKS.filter(t=>filter==='all'||t.status===filter);
+  body.innerHTML=items.map(t=>`
+    <tr class="task-row ${t.id===current.id?'sel':''}" onclick="selectTask(${t.id})">
+      <td class="mono">#${t.id}</td><td>${t.mode}</td><td>${t.trigger}</td>
+      <td>${STATUS_TAG[t.status]}</td>
+      <td class="muted" style="font-size:12px">${t.stage==='done'?'已完成':t.prog}</td>
+      <td class="muted">${t.started}</td>
+    </tr>`).join('')||'<tr><td colspan="6" class="empty-tip">没有符合条件的任务</td></tr>';
+  document.getElementById('listCount').textContent=`共 ${items.length} 条`;
+}
+function renderDetail(){
+  const t=current;
+  document.getElementById('d-title').innerHTML=`#${t.id} · ${t.mode}`;
+  document.getElementById('d-status').innerHTML=STATUS_TAG[t.status];
+  document.getElementById('d-cancel').style.display=t.status==='running'?'':'none';
+  document.getElementById('d-progress-text').textContent=t.prog;
+  document.getElementById('d-pbar').style.width=t.progPct+'%';
+  document.getElementById('d-elapsed').textContent=fmt(t.elapsed);
+  document.getElementById('d-chips').innerHTML=t.chips.map(c=>`<span class="chip"><b>${c[0]}</b>${c[1]}</span>`).join('');
+  const failed=t.status==='failed'||t.status==='cancelled'||t.status==='partial-success';
+  let reached=STAGE_ORDER.indexOf(t.stage);
+  if(t.stage==='done')reached=STAGE_ORDER.length;
+  document.querySelectorAll('#stageLine .stage').forEach((el,i)=>{
+    el.className='stage';
+    if(i<reached||t.stage==='done')el.className='stage done';
+    if(t.status==='running'&&i===reached)el.className='stage cur';
+    if(failed&&i===reached)el.className='stage failed';
+  });
+  document.getElementById('d-params').innerHTML=Object.entries(t.params).map(([k,v])=>`<div class="kv-row"><span class="k">${k}</span><span class="v">${v}</span></div>`).join('');
+  const pend=t.publish_pending&&t.publish_pending.length;
+  document.getElementById('d-arts').innerHTML=
+    (pend?`<div class="callout warn" style="margin-bottom:12px">⚠️ 准原子发布中断：目标 <b>${t.publish_pending.join('、')}</b> 未写入成功，系统库数据已可用。可对失败目标重放本轮产物完成补偿。</div>
+      <div style="margin-bottom:12px"><button class="btn primary sm" onclick="retryPublish()">⟳ 重试发布（${t.publish_pending.join('、')}）</button></div>`:'')+
+    (t.arts.length
+    ?t.arts.map(a=>`<div class="kv-row" style="align-items:center"><span class="k">${a[0]}</span><span class="v"><span class="mono">${a[1]}</span> <span class="muted">· ${a[2]}</span></span><button class="btn link" style="margin-left:auto" onclick="alert('原型示意：下载 ${a[1]}')">下载</button></div>`).join('')
+    :'<div class="empty-tip">本轮无产物（任务未进入转换阶段或已取消）</div>');
+  renderLogs(t.logs);
+}
+/* 补偿发布：对失败目标重放本轮 artifacts */
+function retryPublish(){
+  const t=current;
+  if(!t.publish_pending||!t.publish_pending.length)return;
+  if(!confirm(`将对以下目标重放本轮产物：\n${t.publish_pending.join('、')}\n\n重放内容：clash / v2ray(mixed) / singbox 共 ${t.arts.length} 个产物。`))return;
+  t.publish_pending=[];
+  t.status='success';
+  t.logs=t.logs.concat([["INFO","web.publish","retry publish to gist-main: replay 3 artifacts"],["INFO","web.publish","publish completed, run #"+t.id+" -> success"]]);
+  renderList();renderDetail();
+  alert('原型示意：补偿完成\n\ngist-main 已补齐本轮 3 个产物，run 置为 success，publish_pending 清空。');
+}
+function renderLogs(logs){
+  const box=document.getElementById('logbox');
+  box.innerHTML=logs.map((l,i)=>`<div class="log-line" data-lv="${l[0]}"><span class="ts">${fmtTime(i)}</span><span class="lv-${l[0]}">${l[0]}</span><span class="msg">${l[1]} ${l[2]}</span></div>`).join('');
+  if(document.getElementById('autoscroll').checked)box.scrollTop=box.scrollHeight;
+  applyFilter();
+}
+function fmt(s){return '00:'+String(s).padStart(2,'0')}
+function fmtTime(i){const d=new Date(Date.now()-6000+i*2300);return d.toTimeString().slice(0,8)}
+function applyFilter(){
+  const ow=document.getElementById('onlywarn').checked;
+  document.querySelectorAll('#logbox .log-line').forEach(l=>{l.style.display=(ow&&l.dataset.lv==='INFO')?'none':'flex'});
+}
+document.getElementById('autoscroll').addEventListener('change',applyFilter);
+document.getElementById('onlywarn').addEventListener('change',applyFilter);
+function selectTask(id){
+  current=TASKS.find(t=>t.id===id)||current;
+  renderList();renderDetail();
+  clearInterval(logTimer);
+  if(current.status==='running')startLive();
+}
+const MORE=[["INFO","crawl.helpers","billing subscription available: 38"],["INFO","crawl.helpers","subscription unavailable: 30"],["DEBUG","web.runner","stage crawl finished, cost=41.30s"],["INFO","web.runner","persist candidates to system database"]];
+function startLive(){
+  let i=0;
+  logTimer=setInterval(()=>{
+    const l=MORE[i%MORE.length];i++;
+    const box=document.getElementById('logbox');
+    const line=document.createElement('div');
+    line.className='log-line';line.dataset.lv=l[0];
+    line.innerHTML=`<span class="ts">${new Date().toTimeString().slice(0,8)}</span><span class="lv-${l[0]}">${l[0]}</span><span class="msg">${l[1]} ${l[2]}</span>`;
+    box.appendChild(line);
+    if(box.children.length>120)box.removeChild(box.firstChild);
+    if(document.getElementById('autoscroll').checked)box.scrollTop=box.scrollHeight;
+    applyFilter();
+  },2200);
+}
+document.querySelectorAll('#statusSeg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#statusSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');filter=b.dataset.s;renderList();
+}));
+document.querySelectorAll('#detailTabs .dt').forEach(d=>d.addEventListener('click',()=>{
+  document.querySelectorAll('#detailTabs .dt').forEach(x=>x.classList.remove('on'));
+  d.classList.add('on');
+  ['log','params','arts'].forEach(p=>document.getElementById('pane-'+p).style.display=p===d.dataset.p?'':'none');
+}));
+function cancelTask(){
+  if(!confirm('确认取消当前运行中的任务？\n已写入的数据不会回滚。'))return;
+  current.status='cancelled';
+  renderList();renderDetail();clearInterval(logTimer);
+}
+
+/* ================= 源分组选择器 ================= */
+const GROUPS=[
+  {key:'telegram',name:'Telegram',ico:'📨',bg:'#e6f4ff',sources:[['oneclickvpnkeys','pages=5'],['V2RayV2RayV2Ray','pages=5'],['VmessProtocol','pages=5'],['vigility','pages=5'],['theVpnInfo','pages=5'],['Freenodeshare','pages=5']]},
+  {key:'github',name:'GitHub 搜索',ico:'🐙',bg:'#f6ffed',sources:[['github-search','pages=2']]},
+  {key:'gist',name:'Gist 时间线',ico:'📄',bg:'#f6ffed',sources:[['gist-timeline','max_gists=100']]},
+  {key:'page',name:'通用网页',ico:'🌐',bg:'#f9f0ff',sources:[['free-node-pages','3 个 URL']]},
+  {key:'script',name:'脚本插件',ico:'🧪',bg:'#fff2f0',sources:[['scaner-plugin','plugin=scaner'],['v2rayse-plugin','plugin=v2rayse'],['fofa-plugin','plugin=fofa · 已停用']]},
+];
+let openGroup=null;
+let selState={};
+GROUPS.forEach(g=>g.sources.forEach((s,i)=>selState[g.key+':'+i]=!s[1].includes('停用')));
+function grpState(g){
+  return {sel:g.sources.filter((s,i)=>selState[g.key+':'+i]).length,total:g.sources.length};
+}
+function renderGroups(){
+  document.getElementById('grpGrid').innerHTML=GROUPS.map(g=>{
+    const st=grpState(g);
+    const cls=st.sel===0?'':st.sel===g.sources.length?'sel':'partial';
+    return `<div class="grp-card ${cls}" onclick="toggleGroup('${g.key}')">
+      <span class="g-state">${st.sel>0?'✓':''}</span>
+      <div class="g-ico" style="background:${g.bg}">${g.ico}</div>
+      <h5>${g.name}</h5><p>${st.sel} / ${g.sources.length} 个源</p>
+    </div>`;
+  }).join('');
+  const total=GROUPS.reduce((a,g)=>a+grpState(g).sel,0);
+  const all=GROUPS.reduce((a,g)=>a+g.sources.length,0);
+  document.getElementById('scopeCount').textContent=`已选 ${total} / ${all} 个源`;
+}
+function renderGroupDetail(){
+  const g=GROUPS.find(x=>x.key===openGroup);
+  if(!g)return;
+  document.getElementById('gdTitle').textContent=`${g.ico} ${g.name} · ${g.sources.length} 个源`;
+  document.getElementById('gdList').innerHTML=g.sources.map((s,i)=>`<label><input type="checkbox" ${selState[openGroup+':'+i]?'checked':''} onchange="selState['${openGroup}:${i}']=this.checked;renderGroups()"> ${s[0]} <span class="t">${s[1]}</span></label>`).join('');
+}
+function toggleGroup(key){
+  const g=GROUPS.find(x=>x.key===key);
+  const st=grpState(g);
+  const target=st.sel===g.sources.length?0:1;
+  g.sources.forEach((s,i)=>{
+    if(s[1].includes('停用')){selState[key+':'+i]=false;return;}
+    selState[key+':'+i]=!!target;
+  });
+  renderGroups();
+  if(openGroup===key){
+    document.getElementById('grpDetail').style.display='none';
+    openGroup=null;
+  }else{
+    openGroup=key;
+    renderGroupDetail();
+    document.getElementById('grpDetail').style.display='block';
+  }
+}
+function grpToggleAll(){
+  const g=GROUPS.find(x=>x.key===openGroup);
+  const st=grpState(g);
+  const target=st.sel!==g.sources.length;
+  g.sources.forEach((s,i)=>{
+    if(s[1].includes('停用'))return;
+    selState[openGroup+':'+i]=target;
+  });
+  renderGroups();renderGroupDetail();
+}
+function scopeAll(all){
+  GROUPS.forEach(g=>g.sources.forEach((s,i)=>selState[g.key+':'+i]=all&&!s[1].includes('停用')));
+  renderGroups();
+  if(openGroup)renderGroupDetail();
+}
+
+/* ================= 存储目标绑定卡片 ================= */
+const TARGETS=[
+  {name:'data-local',type:'local',tname:'本地目录',ico:'📁',bg:'#e6f4ff',enable:true},
+  {name:'gist-main',type:'gist',tname:'GitHub Gist',ico:'🐙',bg:'#f6ffed',enable:true},
+  {name:'pastegg-backup',type:'pastegg',tname:'PasteGG',ico:'📋',bg:'#fff7e6',enable:false},
+];
+let bound={'data-local':true,'gist-main':true,'pastegg-backup':false};
+function renderBind(){
+  document.getElementById('bindCards').innerHTML=TARGETS.map(t=>{
+    const on=bound[t.name]&&t.enable;
+    return `<div class="bind-card ${on?'sel':''} ${t.enable?'':'disabled'}" onclick="toggleBind('${t.name}')">
+      <span class="b-check">${on?'✓':''}</span>
+      <div class="b-ico" style="background:${t.bg}">${t.ico}</div>
+      <h5>${t.name} ${t.enable?'':'<span class="tag gray plain" style="font-size:10px">已停用</span>'}</h5>
+      <p>${t.tname}${t.enable?'':' · 需先在结果存储中启用'}</p>
+    </div>`;
+  }).join('');
+  const n=Object.entries(bound).filter(([k,v])=>v&&TARGETS.find(t=>t.name===k).enable).length;
+  document.getElementById('bindSummary').textContent=n?`已绑定 ${n} 个写入目标（旧数据来自系统库）`:'未绑定目标（回测/爬取+聚合必填）';
+}
+function toggleBind(name){
+  const t=TARGETS.find(x=>x.name===name);
+  if(!t.enable)return;
+  bound[name]=!bound[name];
+  renderBind();
+}
+
+/* ================= 模式切换 ================= */
+document.querySelectorAll('#modeCards .radio-card').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#modeCards .radio-card').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  const m=c.dataset.m;
+  const needBind=m!=='crawl';
+  document.getElementById('bindNone').style.display=needBind?'none':'block';
+  document.getElementById('bindBox').style.display=needBind?'block':'none';
+  document.getElementById('scopeCrawl').style.display=m==='crawl'?'block':'none';
+  document.getElementById('scopeAgg').style.display=m==='aggregate'?'block':'none';
+}));
+function openCreate(){document.getElementById('createModal').classList.add('show')}
+/* 新建定时：打开创建弹窗并直接切到「定时执行」 */
+function openSchedule(){
+  openCreate();
+  setTimeout(()=>selRun(document.querySelectorAll('#runCards .radio-card')[1],'cron'),60);
+}
+function closeCreate(){document.getElementById('createModal').classList.remove('show')}
+document.getElementById('createModal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show')});
+
+/* ================= 定时构建器 ================= */
+let schedKind='minute', schedN=30, schedTime='09:00', schedWeek=[1];
+const SCHED_N_DEFAULT={minute:30,hour:2,day:1,week:1,daily:1,weekly:1};
+function selRun(el,kind){
+  el.parentElement.querySelectorAll('.radio-card').forEach(x=>x.classList.remove('sel'));
+  el.classList.add('sel');
+  document.getElementById('schedBox').style.display=kind==='cron'?'block':'none';
+}
+const WEEK=['一','二','三','四','五','六','日'];
+const SCHED_LABEL={minute:'分钟级',hour:'小时级',day:'天级',week:'周级',daily:'每天几点',weekly:'每周几'};
+function renderSched(){
+  document.querySelectorAll('#schedGrid .sched-opt').forEach(o=>o.classList.toggle('sel',o.dataset.k===schedKind));
+  const f=document.getElementById('schedFields');
+  const stepper=(min,max,unit)=>`<div class="stepper"><button type="button" onclick="stepN(-1)">－</button><input value="${schedN}" onchange="schedN=Math.max(${min},Math.min(${max},+this.value||1));renderSched()"><button type="button" onclick="stepN(1)">＋</button></div><span>${unit}</span>`;
+  const time=()=>`<input type="time" class="time-input" value="${schedTime}" onchange="schedTime=this.value;renderSched()">`;
+  const week=()=>`<div class="week-pick">${WEEK.map((w,i)=>`<span class="${schedWeek.includes(i+1)?'on':''}" onclick="toggleWeek(${i+1})">${w}</span>`).join('')}</div>`;
+  const desc={
+    minute:()=>`每 ${stepper(1,59,'分钟')} 执行一次`,
+    hour:()=>`每 ${stepper(1,23,'小时')} 执行一次`,
+    day:()=>`每 ${stepper(1,30,'天')} 的 ${time()} 执行`,
+    week:()=>`每 ${stepper(1,4,'周')} 的 ${week()} 执行`,
+    daily:()=>`每天 ${time()} 执行`,
+    weekly:()=>`每周 ${week()} 的 ${time()} 执行`,
+  };
+  f.innerHTML=desc[schedKind]();
+  const plan={
+    minute:`每 ${schedN} 分钟执行一次`,
+    hour:`每 ${schedN} 小时执行一次`,
+    day:`每 ${schedN} 天的 ${schedTime} 执行`,
+    week:`每 ${schedN} 周的${schedWeek.map(w=>'周'+WEEK[w-1]).join('')}执行`,
+    daily:`每天 ${schedTime} 执行`,
+    weekly:`每周${schedWeek.map(w=>WEEK[w-1]).join('')}的 ${schedTime} 执行`,
+  }[schedKind];
+  const next={minute:'约 30 分钟后',hour:'约 2 小时后',day:'10 月 6 日 09:00',week:'下周一 09:00',daily:'明天 09:00',weekly:'下周一 09:00'};
+  document.getElementById('schedPreview').innerHTML=`⏰ <b>${SCHED_LABEL[schedKind]}</b> ｜ ${plan} ｜ 下次执行：<b>${next[schedKind]}</b>（本地时区 Asia/Shanghai）`;
+}
+function stepN(d){schedN=Math.max(1,schedN+d);renderSched();}
+function toggleWeek(w){
+  schedWeek=schedWeek.includes(w)?schedWeek.filter(x=>x!==w):[...schedWeek,w];
+  if(!schedWeek.length)schedWeek=[w];
+  renderSched();
+}
+document.querySelectorAll('#schedGrid .sched-opt').forEach(o=>o.addEventListener('click',()=>{
+  schedKind=o.dataset.k;
+  if(SCHED_N_DEFAULT[schedKind])schedN=SCHED_N_DEFAULT[schedKind];
+  renderSched();
+}));
+
+/* ================= 滑块 ================= */
+function onSlide(el){
+  const pct=(el.value-el.min)/(el.max-el.min)*100;
+  el.style.setProperty('--fill',pct+'%');
+  const out=document.getElementById({slThreads:'vThreads',slDelay:'vDelay',slTimeout:'vTimeout'}[el.id]);
+  if(out){
+    const unit=out.dataset.unit;
+    out.innerHTML=el.value+(unit?` <small>${unit}</small>`:'');
+  }
+}
+['slThreads','slDelay','slTimeout'].forEach(id=>onSlide(document.getElementById(id)));
+
+/* ================= 提交 ================= */
+function submitTask(){
+  const mode=document.querySelector('#modeCards .radio-card.sel').dataset.m;
+  if(mode!=='crawl'){
+    const n=Object.entries(bound).filter(([k,v])=>v&&TARGETS.find(t=>t.name===k).enable).length;
+    if(n===0){alert('回测 / 爬取+聚合模式必须绑定至少一个存储目标\n\n绑定目标为本轮结果的写入目标；旧数据（订阅池 / remains）自动来自系统库，无需指定来源。');return;}
+  }
+  closeCreate();
+  const names={crawl:'仅爬取',aggregate:'回测',full:'爬取+聚合'};
+  const total=GROUPS.reduce((a,g)=>a+grpState(g).sel,0);
+  const all=GROUPS.reduce((a,g)=>a+g.sources.length,0);
+  const bindText=mode==='crawl'?'（仅爬取不绑定，仅入系统库）':Object.entries(bound).filter(([k,v])=>v&&TARGETS.find(t=>t.name===k).enable).map(([k])=>k).join(' + ')+'（旧数据来自系统库）';
+  const scheduled=document.getElementById('schedBox').style.display==='block';
+  const schedText=scheduled?'\n执行方式：定时 · '+document.getElementById('schedPreview').textContent.trim():'\n执行方式：立即执行';
+  alert('原型示意：任务已创建\n\n模式：'+names[mode]+'\n参数：线程 64 · 最大存活延迟 5000ms · 验活超时 5000ms\n执行范围：已选 '+total+' / '+all+' 个源'+schedText+'\n绑定目标：'+bindText+'\n\n真实环境：创建 run 记录(pending) → 执行器单实例锁 → 列表与详情实时联动');
+}
+/* ================= 初始化 ================= */
+renderList();renderDetail();startLive();
+renderGroups();renderBind();renderSched();
+</script>
+</body>
+</html>

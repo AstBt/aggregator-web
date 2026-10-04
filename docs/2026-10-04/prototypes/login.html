@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>登录 - Aggregator 管理平台</title>
+<style>
+  :root{
+    --primary:#1677ff; --primary-hover:#4096ff; --primary-active:#0958d9;
+    --success:#52c41a; --warning:#faad14; --error:#f5222d;
+    --text-1:rgba(0,0,0,.88); --text-2:rgba(0,0,0,.65); --text-3:rgba(0,0,0,.45);
+    --border:#e5e6eb; --bg:#f5f6f8; --card:#fff;
+    --sidebar-bg:#001529;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--text-1);font-size:14px;line-height:1.5}
+  .login-wrap{display:flex;min-height:100vh}
+  /* ===== 左侧品牌区 ===== */
+  .brand{flex:1.15;background:linear-gradient(160deg,#0b2a4a 0%,#123f6d 55%,#0e5a9e 100%);color:#fff;padding:56px 64px;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}
+  .brand::after{content:"";position:absolute;right:-140px;top:-140px;width:420px;height:420px;border-radius:50%;background:radial-gradient(circle,rgba(22,119,255,.35),transparent 70%)}
+  .brand::before{content:"";position:absolute;left:-80px;bottom:-120px;width:340px;height:340px;border-radius:50%;background:radial-gradient(circle,rgba(82,196,26,.18),transparent 70%)}
+  .brand-logo{display:flex;align-items:center;gap:14px;font-size:20px;font-weight:600;letter-spacing:.5px;position:relative;z-index:1}
+  .brand-logo .mark{width:44px;height:44px;border-radius:10px;background:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;box-shadow:0 4px 14px rgba(0,0,0,.25)}
+  .brand-hero{position:relative;z-index:1;margin:48px 0}
+  .brand-hero h1{font-size:38px;font-weight:700;line-height:1.25;margin-bottom:18px}
+  .brand-hero h1 em{font-style:normal;color:#69b4ff}
+  .brand-hero p{font-size:15px;color:rgba(255,255,255,.78);max-width:520px}
+  .feature-list{position:relative;z-index:1;display:grid;grid-template-columns:1fr 1fr;gap:14px 28px;max-width:560px}
+  .feature-item{display:flex;gap:12px;align-items:flex-start;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:14px 16px;backdrop-filter:blur(4px)}
+  .feature-item .fi-ico{width:34px;height:34px;flex:none;border-radius:8px;background:rgba(22,119,255,.28);display:flex;align-items:center;justify-content:center;font-size:16px}
+  .feature-item h4{font-size:13.5px;font-weight:600;margin-bottom:2px}
+  .feature-item p{font-size:12px;color:rgba(255,255,255,.6)}
+  .brand-foot{position:relative;z-index:1;font-size:12px;color:rgba(255,255,255,.45);display:flex;gap:18px}
+  /* ===== 右侧登录表单 ===== */
+  .login-panel{width:520px;background:#fff;display:flex;flex-direction:column;justify-content:center;padding:48px 64px;box-shadow:-8px 0 24px rgba(0,0,0,.06)}
+  .login-panel h2{font-size:24px;font-weight:600;margin-bottom:6px}
+  .login-panel .sub{color:var(--text-3);font-size:13px;margin-bottom:36px}
+  .form-item{margin-bottom:22px}
+  .form-item label{display:block;font-size:13px;color:var(--text-2);margin-bottom:7px}
+  .form-item label .req{color:var(--error);margin-right:2px}
+  .input{width:100%;height:42px;border:1px solid var(--border);border-radius:8px;padding:0 12px;font-size:14px;transition:border-color .2s, box-shadow .2s;background:#fff;color:var(--text-1)}
+  .input:focus{outline:none;border-color:var(--primary);box-shadow:0 0 0 3px rgba(22,119,255,.12)}
+  .input::placeholder{color:#c9cdd4}
+  .login-row{display:flex;justify-content:space-between;align-items:center;margin-bottom:24px}
+  .checkbox{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-2);cursor:pointer;user-select:none}
+  .checkbox input{accent-color:var(--primary);width:15px;height:15px}
+  .btn-primary{width:100%;height:42px;border:none;border-radius:8px;background:var(--primary);color:#fff;font-size:15px;font-weight:500;cursor:pointer;transition:background .2s}
+  .btn-primary:hover{background:var(--primary-hover)}
+  .btn-primary:active{background:var(--primary-active)}
+  .login-tip{margin-top:26px;padding:12px 14px;background:#f6f9ff;border:1px dashed #bfd8ff;border-radius:8px;font-size:12px;color:#5b7fa6;line-height:1.7}
+  .login-tip b{color:var(--primary)}
+  @media (max-width:1080px){.brand{display:none}.login-panel{width:100%}}
+</style>
+</head>
+<body>
+<div class="login-wrap">
+  <!-- 左侧品牌区 -->
+  <section class="brand">
+    <div class="brand-logo">
+      <span class="mark">🛰️</span>
+      <span>Aggregator 管理平台</span>
+    </div>
+    <div class="brand-hero">
+      <h1>订阅聚合 · <em>本地化管理</em></h1>
+      <p>基于 Vue Vben Admin 5.x 构建的聚合器 Web 控制台：爬取源配置、任务编排、订阅与节点结果全部本地化管理，不再依赖远端推送。</p>
+    </div>
+    <div class="feature-list">
+      <div class="feature-item"><span class="fi-ico">📊</span><div><h4>仪表盘</h4><p>订阅 / 节点可用量一览</p></div></div>
+      <div class="feature-item"><span class="fi-ico">🧩</span><div><h4>爬取源配置</h4><p>8 类渠道可视化管理</p></div></div>
+      <div class="feature-item"><span class="fi-ico">⚙️</span><div><h4>任务管理</h4><p>实时日志 · 进度 · 取消</p></div></div>
+      <div class="feature-item"><span class="fi-ico">💾</span><div><h4>结果本地化</h4><p>保存本地 · 检索下载</p></div></div>
+    </div>
+    <div class="brand-foot">
+      <span>Aggregator v2.0-web</span><span>模板: Vue Vben Admin 5.8.0</span><span>单管理员模式</span>
+    </div>
+  </section>
+
+  <!-- 右侧登录表单 -->
+  <section class="login-panel">
+    <h2>欢迎登录</h2>
+    <p class="sub">管理员账号登录 · 不开放注册 · 未接入第三方登录</p>
+    <form onsubmit="event.preventDefault();location.href='dashboard.html'">
+      <div class="form-item">
+        <label><span class="req">*</span>用户名</label>
+        <input class="input" type="text" placeholder="请输入管理员用户名" value="admin" autocomplete="username">
+      </div>
+      <div class="form-item">
+        <label><span class="req">*</span>密码</label>
+        <input class="input" type="password" placeholder="请输入密码" value="········" autocomplete="current-password">
+      </div>
+      <div class="login-row">
+        <label class="checkbox"><input type="checkbox" checked> 记住我</label>
+        <span style="font-size:13px;color:var(--primary);cursor:pointer">忘记密码？</span>
+      </div>
+      <button class="btn-primary" type="submit">登 录</button>
+    </form>
+    <div class="login-tip">
+      演示环境：任意用户名/密码即可进入。<br>
+      <b>安全策略：</b>密码 bcrypt 哈希存储；连续 5 次失败锁定 15 分钟；会话有效期 12 小时；系统<b>无注册功能</b>，账号仅能通过初始化脚本创建。
+    </div>
+  </section>
+</div>
+</body>
+</html>

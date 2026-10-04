@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>节点浏览 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .proto{font-weight:600;font-size:12px;letter-spacing:.3px}
+  .proto.vless{color:#0958d9}.proto.vmess{color:#4096ff}.proto.hysteria2{color:#389e0d}
+  .proto.ss{color:#08979c}.proto.trojan{color:#d46b08}.proto.anytls{color:#c41d7f}
+  .delay{font-weight:700;font-size:12.5px}
+  .delay.g{color:#389e0d}.delay.y{color:#d48806}.delay.r{color:#cf1322}
+  .flag{font-size:13px;margin-right:5px}
+  .art{border:1px solid #e8edf4;border-radius:10px;padding:15px 16px;display:flex;gap:13px;align-items:flex-start;transition:box-shadow .2s}
+  .art:hover{box-shadow:0 4px 14px rgba(0,0,0,.06)}
+  .art .a-ico{width:42px;height:42px;border-radius:9px;display:flex;align-items:center;justify-content:center;font-size:19px;flex:none}
+  .art h5{font-size:13.5px;font-weight:600;margin-bottom:3px}
+  .art p{font-size:11.5px;color:var(--text-3);line-height:1.6}
+  .art .dl{margin-top:9px}
+  .export-preview{background:#1d2433;color:#c9d4e6;border-radius:9px;padding:14px 16px;font-family:Consolas,monospace;font-size:11.5px;line-height:1.8;white-space:pre;overflow-x:auto}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item active" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">结果<span>/</span>节点浏览</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar vw">V</span><span><span class="nm">lisi</span><br><span class="rl">只读</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="mini-stats">
+        <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">🌐</span><div><div class="v">612</div><div class="k">存活节点（run #1042）</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">⚡</span><div><div class="v">487ms</div><div class="k">平均延迟</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#e6fffb;color:#08979c">🏠</span><div><div class="v">96</div><div class="k">住宅 IP 节点</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#fff7e6;color:#d48806">📦</span><div><div class="v">3</div><div class="k">本地产物</div></div></div>
+      </div>
+
+      <!-- 本轮产物 -->
+      <div class="card">
+        <div class="card-hd"><h3>本轮产物（本地文件）</h3><span class="muted" style="font-size:12px">目录: data/local/ · 写入策略见「结果存储」</span></div>
+        <div class="dash-grid" style="margin-bottom:0">
+          <div class="art">
+            <span class="a-ico" style="background:#e6f4ff">📕</span>
+            <div style="flex:1"><h5>clash 配置</h5><p>free-clash.yaml · 89.4 KB · 612 节点 · 10-04 11:05</p>
+            <div class="dl"><button class="btn sm primary" onclick="alert('原型示意：下载 free-clash.yaml')">⤓ 下载</button></div></div>
+          </div>
+          <div class="art">
+            <span class="a-ico" style="background:#f6ffed">📗</span>
+            <div style="flex:1"><h5>v2ray (mixed)</h5><p>free-v2ray.txt · 54.1 KB · base64 · 10-04 11:05</p>
+            <div class="dl"><button class="btn sm primary" onclick="alert('原型示意：下载 free-v2ray.txt')">⤓ 下载</button></div></div>
+          </div>
+          <div class="art">
+            <span class="a-ico" style="background:#f9f0ff">📘</span>
+            <div style="flex:1"><h5>singbox</h5><p>free-singbox.json · 96.8 KB · 612 节点 · 10-04 11:05</p>
+            <div class="dl"><button class="btn sm primary" onclick="alert('原型示意：下载 free-singbox.json')">⤓ 下载</button></div></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 节点列表 -->
+      <div class="card">
+        <div class="card-hd">
+          <h3>节点列表</h3>
+          <div style="display:flex;gap:8px">
+            <select class="input" style="width:150px;height:30px;font-size:12px" id="runSel">
+              <option>最新一轮 run #1042</option><option>run #1039</option><option>run #1036</option>
+            </select>
+            <button class="btn sm" onclick="alert('原型示意：导出 CSV')">⤓ CSV</button>
+            <button class="btn sm primary" onclick="document.getElementById('exportModal').classList.add('show')">⤒ 导出客户端配置</button>
+          </div>
+        </div>
+
+        <div class="filter-bar" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+          <select class="input" style="width:120px;height:32px;font-size:12.5px"><option>全部协议</option><option>vless</option><option>vmess</option><option>hysteria2</option><option>ss</option><option>trojan</option><option>anytls</option></select>
+          <select class="input" style="width:120px;height:32px;font-size:12.5px"><option>全部地区</option><option>香港</option><option>台湾</option><option>新加坡</option><option>日本</option><option>美国</option><option>韩国</option></select>
+          <select class="input" style="width:120px;height:32px;font-size:12.5px"><option>全部状态</option><option>仅存活</option><option>仅失效</option></select>
+          <select class="input" style="width:130px;height:32px;font-size:12.5px"><option>全部延迟</option><option>&lt; 300ms</option><option>300-800ms</option><option>&gt; 800ms</option></select>
+          <div class="seg" id="aliveSeg">
+            <button class="on">存活 612</button><button>全部 1256</button>
+          </div>
+          <input class="input" style="flex:1;min-width:200px" placeholder="🔍 搜索节点名 / 服务器地址">
+          <button class="btn sm primary">查询</button>
+          <button class="btn sm">重置</button>
+        </div>
+
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width:30px"><input type="checkbox"></th>
+                <th>节点名</th><th>协议</th><th>服务器</th><th>延迟</th><th>地区</th><th>住宅</th><th>来源订阅</th><th style="width:64px">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><input type="checkbox"></td><td><b>🚀 香港 01</b></td><td><span class="proto vless">VLESS</span></td><td class="mono">hk01.example.com:443</td><td><span class="delay g">312ms</span></td><td><span class="flag">🇭🇰</span>香港</td><td>—</td><td class="mono muted">oneclickvpnkeys…</td><td><a class="btn link" onclick="openNode(0)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 新加坡 02</b></td><td><span class="proto vmess">VMess</span></td><td class="mono">sg02.example.net:80</td><td><span class="delay g">456ms</span></td><td><span class="flag">🇸🇬</span>新加坡</td><td>—</td><td class="mono muted">oneclickvpnkeys…</td><td><a class="btn link" onclick="openNode(1)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 香港 04</b></td><td><span class="proto hysteria2">Hysteria2</span></td><td class="mono">hk04.example.io:36712</td><td><span class="delay g">167ms</span></td><td><span class="flag">🇭🇰</span>香港</td><td><span class="tag ok" style="line-height:18px">住宅</span></td><td class="mono muted">raw.githubusercontent…</td><td><a class="btn link" onclick="openNode(2)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 日本 01</b></td><td><span class="proto trojan">Trojan</span></td><td class="mono">jp01.example.org:443</td><td><span class="delay g">189ms</span></td><td><span class="flag">🇯🇵</span>日本</td><td>—</td><td class="mono muted">gist.githubusercontent…</td><td><a class="btn link" onclick="openNode(3)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 美国 05</b></td><td><span class="proto ss">SS</span></td><td class="mono">us05.example.com:8388</td><td><span class="delay y">723ms</span></td><td><span class="flag">🇺🇸</span>美国</td><td><span class="tag ok" style="line-height:18px">住宅</span></td><td class="mono muted">siteA.example…</td><td><a class="btn link" onclick="openNode(4)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 韩国 03</b></td><td><span class="proto vless">VLESS</span></td><td class="mono">kr03.example.kr:443</td><td><span class="delay g">398ms</span></td><td><span class="flag">🇰🇷</span>韩国</td><td>—</td><td class="mono muted">raw.githubusercontent…</td><td><a class="btn link" onclick="openNode(5)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 台湾 01</b></td><td><span class="proto vmess">VMess</span></td><td class="mono">tw01.example.tw:443</td><td><span class="delay g">221ms</span></td><td><span class="flag">🇹🇼</span>台湾</td><td>—</td><td class="mono muted">raw.githubusercontent…</td><td><a class="btn link" onclick="openNode(6)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 美国 08</b></td><td><span class="proto anytls">AnyTLS</span></td><td class="mono">us08.example.com:8443</td><td><span class="delay y">534ms</span></td><td><span class="flag">🇺🇸</span>美国</td><td>—</td><td class="mono muted">siteA.example…</td><td><a class="btn link" onclick="openNode(7)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td><b>🚀 香港 09</b></td><td><span class="proto vless">VLESS</span></td><td class="mono">hk09.example.hk:443</td><td><span class="delay r">921ms</span></td><td><span class="flag">🇭🇰</span>香港</td><td>—</td><td class="mono muted">oneclickvpnkeys…</td><td><a class="btn link" onclick="openNode(8)">详情</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pager"><span>共 612 条（存活）· 数据轮次 run #1042 · 10-04 11:05 · 已选 0 条</span><span>‹ 1 / 62 ›</span></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 节点详情抽屉 ================= -->
+<div class="drawer-mask" id="drawerMask" onclick="closeNode()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-hd"><h3 id="n-title">节点详情</h3><span class="btn link" onclick="closeNode()" style="font-size:16px">✕</span></div>
+  <div class="drawer-bd">
+    <div class="kv-row"><span class="k">名称</span><span class="v" id="n-name"></span></div>
+    <div class="kv-row"><span class="k">协议</span><span class="v" id="n-proto"></span></div>
+    <div class="kv-row"><span class="k">服务器</span><span class="v mono" id="n-server"></span></div>
+    <div class="kv-row"><span class="k">延迟</span><span class="v" id="n-delay"></span></div>
+    <div class="kv-row"><span class="k">地区 / 住宅</span><span class="v" id="n-region"></span></div>
+    <div class="kv-row"><span class="k">来源订阅</span><span class="v mono" id="n-sub"></span></div>
+    <div class="kv-row"><span class="k">发现轮次</span><span class="v muted" id="n-run"></span></div>
+    <div class="section-title" style="font-size:13px;font-weight:600;color:var(--text-2);margin-top:16px">原始字段（raw）</div>
+    <div class="raw-box" id="n-raw"></div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn" onclick="alert('原型示意：复制节点分享链接')">复制链接</button>
+    <button class="btn primary" onclick="closeNode()">关闭</button>
+  </div>
+</aside>
+
+<!-- ================= 导出弹窗 ================= -->
+<div class="modal-mask" id="exportModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <h3>导出客户端配置</h3>
+      <span class="close-x" onclick="document.getElementById('exportModal').classList.remove('show')">✕</span>
+    </div>
+    <div class="modal-bd">
+      <div class="section-title">客户端类型（导出时进行协议转换）</div>
+      <div class="radio-cards c3" id="clientCards">
+        <div class="radio-card sel" data-c="clash"><h5>📕 Clash</h5><p>Clash / Clash Meta / mihomo 内核，YAML 格式</p></div>
+        <div class="radio-card" data-c="v2ray"><h5>📗 V2Ray (mixed)</h5><p>v2rayN / sing-box 等支持的混合订阅，Base64 文本</p></div>
+        <div class="radio-card" data-c="singbox"><h5>📘 SingBox</h5><p>sing-box 客户端，JSON 格式</p></div>
+      </div>
+
+      <div class="section-title" style="margin-top:18px">导出范围</div>
+      <div class="form-grid c3">
+        <div class="form-item"><label>数据轮次</label><select class="input"><option>最新一轮 run #1042</option><option>run #1039</option></select></div>
+        <div class="form-item"><label>包含范围</label><select class="input"><option>仅当前筛选结果（612）</option><option>仅勾选节点</option><option>全部存活节点</option></select></div>
+        <div class="form-item"><label>去除失效</label><select class="input"><option>是</option><option>否</option></select></div>
+      </div>
+      <label class="checkbox" style="margin-top:2px"><input type="checkbox" checked> 保留 emoji 节点名（🚀 等标记）</label>
+      <label class="checkbox" style="margin-top:8px"><input type="checkbox"> 导出后写入已启用存储目标（gist-main）</label>
+
+      <div class="section-title" style="margin-top:18px">转换预览</div>
+      <div class="export-preview" id="exportPreview"></div>
+    </div>
+    <div class="modal-ft">
+      <span class="muted" style="margin-right:auto;font-size:12px" id="exportNote">预计节点 612 · 服务端经 subconverter 实时转换</span>
+      <button class="btn" onclick="document.getElementById('exportModal').classList.remove('show')">取消</button>
+      <button class="btn primary" onclick="doExport()">开始转换并下载</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- 节点详情 ---------- */
+const nodes=[
+  {name:"🚀 香港 01",proto:"VLESS",server:"hk01.example.com:443",delay:"312ms",region:"🇭🇰 香港 · 非住宅",sub:"https://oneclickvpnkeys.example.com/link/abc123?sub=3",raw:'{\n  "name": "🚀 香港 01",\n  "type": "vless",\n  "server": "hk01.example.com",\n  "port": 443,\n  "uuid": "e5f3…a91c",\n  "network": "ws",\n  "tls": true,\n  "servername": "hk01.example.com",\n  "udp": true,\n  "delay": 312\n}'},
+  {name:"🚀 新加坡 02",proto:"VMess",server:"sg02.example.net:80",delay:"456ms",region:"🇸🇬 新加坡 · 非住宅",sub:"https://oneclickvpnkeys.example.com/link/abc123?sub=3",raw:'{\n  "name": "🚀 新加坡 02",\n  "type": "vmess",\n  "server": "sg02.example.net",\n  "port": 80,\n  "uuid": "7b2c…11f0",\n  "cipher": "auto",\n  "network": "tcp",\n  "udp": true,\n  "delay": 456\n}'},
+  {name:"🚀 香港 04",proto:"Hysteria2",server:"hk04.example.io:36712",delay:"167ms",region:"🇭🇰 香港 · 住宅",sub:"https://raw.githubusercontent.com/xxx/yyy/main/sub.txt",raw:'{\n  "name": "🚀 香港 04",\n  "type": "hysteria2",\n  "server": "hk04.example.io",\n  "port": 36712,\n  "password": "…",\n  "sni": "hk04.example.io",\n  "up": "50 Mbps",\n  "down": "200 Mbps",\n  "delay": 167\n}'},
+  {name:"🚀 日本 01",proto:"Trojan",server:"jp01.example.org:443",delay:"189ms",region:"🇯🇵 日本 · 非住宅",sub:"https://gist.githubusercontent.com/anon/9f86d081884c7d65/full",raw:'{\n  "name": "🚀 日本 01",\n  "type": "trojan",\n  "server": "jp01.example.org",\n  "port": 443,\n  "sni": "jp01.example.org",\n  "udp": true\n}'},
+  {name:"🚀 美国 05",proto:"SS",server:"us05.example.com:8388",delay:"723ms",region:"🇺🇸 美国 · 住宅",sub:"https://siteA.example.com/s/9f8e…5d4c",raw:'{\n  "name": "🚀 美国 05",\n  "type": "ss",\n  "server": "us05.example.com",\n  "port": 8388,\n  "cipher": "aes-128-gcm",\n  "udp": true\n}'},
+];
+function openNode(i){
+  const n=nodes[i%nodes.length];
+  document.getElementById('n-name').textContent=n.name;
+  document.getElementById('n-proto').textContent=n.proto;
+  document.getElementById('n-server').textContent=n.server;
+  document.getElementById('n-delay').textContent=n.delay;
+  document.getElementById('n-region').textContent=n.region;
+  document.getElementById('n-sub').textContent=n.sub;
+  document.getElementById('n-run').textContent='#1042 · 10-04 11:05';
+  document.getElementById('n-raw').textContent=n.raw;
+  document.getElementById('drawerMask').style.display='block';
+  document.getElementById('drawer').classList.add('open');
+}
+function closeNode(){
+  document.getElementById('drawerMask').style.display='none';
+  document.getElementById('drawer').classList.remove('open');
+}
+document.querySelectorAll('#aliveSeg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#aliveSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+/* ---------- 导出弹窗：类型联动预览 ---------- */
+const PREVIEW={
+  clash:'port: 443\ntype: vless\nname: "🚀 香港 01"\nserver: hk01.example.com\nuuid: e5f3****\nnetwork: ws\ntls: true\nudp: true\n# … 共 612 个 proxies',
+  v2ray:'vmess://eyJ2IjoiMiIsInBzIjoi8J+Ti……\nvless://e5f3…@hk01.example.com:443?……\ntrojan://…@jp01.example.org:443#……\n# … base64 编码后共 612 条',
+  singbox:'{\n  "type": "vless",\n  "tag": "🚀 香港 01",\n  "server": "hk01.example.com",\n  "server_port": 443,\n  "uuid": "e5f3…",\n  "transport": { "type": "ws" }\n}\n# … 共 612 个 outbounds',
+};
+const NOTE={clash:"预计 89.4 KB · YAML",v2ray:"预计 54.1 KB · base64",singbox:"预计 96.8 KB · JSON"};
+document.querySelectorAll('#clientCards .radio-card').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#clientCards .radio-card').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  const pv=document.getElementById('exportPreview');
+  pv.textContent=PREVIEW[c.dataset.c];
+  document.getElementById('exportNote').textContent=NOTE[c.dataset.c]+' · 服务端经 subconverter 实时转换';
+}));
+document.getElementById('exportPreview').textContent=PREVIEW.clash;
+document.getElementById('exportModal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show')});
+function doExport(){
+  document.getElementById('exportModal').classList.remove('show');
+  alert('原型示意：已提交转换请求\n\n目标类型：Clash\n范围：当前筛选 612 节点\n\n真实环境：服务端生成临时 config → subconverter 转换 → 返回文件下载；同时记入「导出历史」。');
+}
+</script>
+</body>
+</html>

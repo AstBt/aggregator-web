@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>仪表盘 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .health-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f7f7f7;font-size:13px}
+  .health-row:last-child{border:none}
+  .health-row .src{width:120px;font-weight:500;flex:none}
+  .health-row .bar-track{flex:1}
+  .health-row .cnt{width:92px;text-align:right;color:var(--text-2);font-size:12px;flex:none}
+  .store-row{display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid #f7f7f7;font-size:13px}
+  .store-row:last-child{border:none}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item active" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">控制台<span>/</span>仪表盘</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar">A</span><span><span class="nm">admin</span><br><span class="rl">管理员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <!-- 指标卡 -->
+      <div class="stat-grid">
+        <div class="stat-card">
+          <div class="sc-ico" style="background:#e6f4ff;color:#0958d9">📡</div>
+          <div class="lb">订阅可达</div>
+          <div class="num" style="color:#0958d9">41</div>
+          <div class="sub">累计 68 · 上轮新增 <span class="delta up">▲ 6</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-ico" style="background:#f6ffed;color:#389e0d">🌐</div>
+          <div class="lb">可用节点</div>
+          <div class="num" style="color:#389e0d">612</div>
+          <div class="sub">抓取 1,256 · 存活率 48.7% · <span class="delta up">▲ 23</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-ico" style="background:#f9f0ff;color:#722ed1">💾</div>
+          <div class="lb">启用存储目标</div>
+          <div class="num" style="color:#722ed1">2</div>
+          <div class="sub">本地 + Gist · 最近任务绑定 2 个</div>
+        </div>
+        <div class="stat-card">
+          <div class="sc-ico" style="background:#fff7e6;color:#d48806">📈</div>
+          <div class="lb">近 7 日新增订阅</div>
+          <div class="num" style="color:#d48806">27</div>
+          <div class="sub">
+            <span class="spark">
+              <i style="height:38%"></i><i style="height:52%"></i><i style="height:44%"></i><i style="height:60%"></i><i style="height:48%"></i><i style="height:72%"></i><i style="height:86%"></i>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 三图区 -->
+      <div class="dash-grid">
+        <div class="card">
+          <div class="card-hd"><h3>节点协议分布</h3><span class="extra">存活节点</span></div>
+          <div class="bars">
+            <div class="bar-row"><span class="muted">vless</span><div class="bar-track"><div class="bar-fill" style="width:33%;background:#1677ff"></div></div><span class="pv">205</span></div>
+            <div class="bar-row"><span class="muted">vmess</span><div class="bar-track"><div class="bar-fill" style="width:28%;background:#4096ff"></div></div><span class="pv">171</span></div>
+            <div class="bar-row"><span class="muted">hysteria2</span><div class="bar-track"><div class="bar-fill" style="width:18%;background:#52c41a"></div></div><span class="pv">108</span></div>
+            <div class="bar-row"><span class="muted">ss</span><div class="bar-track"><div class="bar-fill" style="width:14%;background:#13c2c2"></div></div><span class="pv">86</span></div>
+            <div class="bar-row"><span class="muted">trojan</span><div class="bar-track"><div class="bar-fill" style="width:6%;background:#faad14"></div></div><span class="pv">36</span></div>
+            <div class="bar-row"><span class="muted">anytls</span><div class="bar-track"><div class="bar-fill" style="width:1%;background:#eb2f96"></div></div><span class="pv">6</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><h3>节点地区 Top 5</h3><span class="extra">存活节点</span></div>
+          <div class="bars">
+            <div class="bar-row"><span class="muted">🇭🇰 香港</span><div class="bar-track"><div class="bar-fill" style="width:100%;background:#1677ff"></div></div><span class="pv">186</span></div>
+            <div class="bar-row"><span class="muted">🇺🇸 美国</span><div class="bar-track"><div class="bar-fill" style="width:72%;background:#4096ff"></div></div><span class="pv">134</span></div>
+            <div class="bar-row"><span class="muted">🇸🇬 新加坡</span><div class="bar-track"><div class="bar-fill" style="width:58%;background:#52c41a"></div></div><span class="pv">108</span></div>
+            <div class="bar-row"><span class="muted">🇯🇵 日本</span><div class="bar-track"><div class="bar-fill" style="width:50%;background:#13c2c2"></div></div><span class="pv">93</span></div>
+            <div class="bar-row"><span class="muted">🇰🇷 韩国</span><div class="bar-track"><div class="bar-fill" style="width:41%;background:#faad14"></div></div><span class="pv">76</span></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><h3>节点延迟区间</h3><span class="extra">存活节点</span></div>
+          <div class="bars">
+            <div class="bar-row"><span class="muted">&lt; 300ms</span><div class="bar-track"><div class="bar-fill" style="width:46%;background:#52c41a"></div></div><span class="pv">281</span></div>
+            <div class="bar-row"><span class="muted">300-800ms</span><div class="bar-track"><div class="bar-fill" style="width:38%;background:#faad14"></div></div><span class="pv">233</span></div>
+            <div class="bar-row"><span class="muted">&gt; 800ms</span><div class="bar-track"><div class="bar-fill" style="width:16%;background:#f5222d"></div></div><span class="pv">98</span></div>
+          </div>
+          <div style="margin-top:14px;padding-top:12px;border-top:1px dashed var(--line);font-size:12px;color:var(--text-3)">
+            平均延迟 <b style="color:var(--text-1)">487ms</b> · 住宅 IP 节点 <b style="color:var(--text-1)">96</b> 个
+          </div>
+        </div>
+      </div>
+
+      <!-- 最近任务 + 源健康/存储状态 -->
+      <div class="two-col">
+        <div class="card">
+          <div class="card-hd"><h3>最近任务运行</h3><a class="btn link" href="tasks.html">查看全部 →</a></div>
+          <div class="tbl-wrap">
+            <table class="tbl">
+              <thead><tr><th>ID</th><th>模式</th><th>触发</th><th>状态</th><th>订阅新增/存活</th><th>节点存活</th><th>耗时</th><th>开始时间</th></tr></thead>
+              <tbody>
+                <tr><td class="mono">#1043</td><td>仅爬取</td><td>zhangsan</td><td><span class="tag info"><span class="dot-live" style="background:currentColor;animation:none"></span>运行中</span></td><td>+2 / —</td><td>—</td><td>48s</td><td class="muted">今天 14:02</td></tr>
+                <tr><td class="mono">#1042</td><td>爬取+聚合</td><td>定时</td><td><span class="tag ok">成功</span></td><td>+6 / 41</td><td>612</td><td>2m14s</td><td class="muted">今天 11:05</td></tr>
+                <tr><td class="mono">#1041</td><td>仅爬取</td><td>zhangsan</td><td><span class="tag ok">成功</span></td><td>+5 / 41</td><td>—</td><td>48s</td><td class="muted">今天 09:12</td></tr>
+                <tr><td class="mono">#1040</td><td>爬取+聚合</td><td>zhangsan</td><td><span class="tag err">失败</span></td><td>+5 / 35</td><td>0</td><td>31s</td><td class="muted">昨天 20:41</td></tr>
+                <tr><td class="mono">#1039</td><td>爬取+聚合</td><td>定时</td><td><span class="tag ok">成功</span></td><td>+4 / 35</td><td>589</td><td>2m02s</td><td class="muted">昨天 11:05</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-hd"><h3>爬取源健康概览</h3><span class="extra">上轮贡献订阅数</span></div>
+          <div class="health-row"><span class="src">📨 Telegram</span><div class="bar-track"><div class="bar-fill" style="width:88%;background:#1677ff"></div></div><span class="cnt">18 / 6 频道</span></div>
+          <div class="health-row"><span class="src">🐙 GitHub</span><div class="bar-track"><div class="bar-fill" style="width:72%;background:#1677ff"></div></div><span class="cnt">15 / 1 源</span></div>
+          <div class="health-row"><span class="src">📄 Gist</span><div class="bar-track"><div class="bar-fill" style="width:48%;background:#52c41a"></div></div><span class="cnt">10 / 1 源</span></div>
+          <div class="health-row"><span class="src">🌐 通用网页</span><div class="bar-track"><div class="bar-fill" style="width:36%;background:#52c41a"></div></div><span class="cnt">7 / 1 源</span></div>
+          <div class="health-row"><span class="src">🧪 脚本插件</span><div class="bar-track"><div class="bar-fill" style="width:6%;background:#f5222d"></div></div><span class="cnt">1 / 1 源</span></div>
+          <div style="margin-top:12px;padding:9px 12px;background:var(--warning-bg);border:1px solid var(--warning-bd);border-radius:8px;font-size:12px;color:var(--warning-tx)">
+            ⚠️ 扫描类插件(scaner)连续 3 轮无贡献，建议检查配置或暂时禁用。
+          </div>
+        </div>
+      </div>
+
+      <!-- 存储目标状态 -->
+      <div class="card">
+        <div class="card-hd"><h3>存储目标状态</h3><a class="btn link" href="storage.html">管理存储目标 →</a></div>
+        <div class="store-row"><span class="tgt-ico" style="background:#e6f4ff">📁</span><b style="width:150px">data-local</b><span class="tag info plain">本地目录 · 启用</span><span style="flex:1"></span><span class="muted">最近写入 今天 11:05</span><span class="tag ok">成功</span></div>
+        <div class="store-row"><span class="tgt-ico" style="background:#f6ffed">🐙</span><b style="width:150px">gist-main</b><span class="tag ok plain">GitHub Gist</span><span style="flex:1"></span><span class="muted">最近写入 今天 11:05</span><span class="tag ok">成功</span></div>
+        <div class="store-row"><span class="tgt-ico" style="background:#fff7e6">📋</span><b style="width:150px">pastegg-backup</b><span class="tag gray plain">PasteGG · 已停用</span><span style="flex:1"></span><span class="muted">最近写入 昨天 03:05</span><span class="tag err">失败 429</span></div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

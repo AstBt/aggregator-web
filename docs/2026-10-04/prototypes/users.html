@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>用户管理 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .perm-matrix td:not(:first-child),.perm-matrix th:not(:first-child){text-align:center}
+  .perm-matrix .yes{color:var(--success-tx);font-weight:700}
+  .perm-matrix .no{color:#c9cdd4}
+  .role-tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:1px 9px;border-radius:10px;font-weight:600}
+  .role-tag.admin{color:#0958d9;background:#e6f4ff;border:1px solid #91caff}
+  .role-tag.operator{color:#389e0d;background:#f6ffed;border:1px solid #b7eb8f}
+  .role-tag.viewer{color:#d48806;background:#fffbe6;border:1px solid #ffe58f}
+  .u-name{display:flex;align-items:center;gap:10px}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item active" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">系统<span>/</span>用户管理</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar">A</span><span><span class="nm">admin</span><br><span class="rl">管理员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout blue">
+        👥 系统<b>不开放注册、不提供第三方登录</b>；账号仅能由管理员在此创建。用户禁用后其登录态将在 60 秒内失效。
+      </div>
+
+      <!-- 用户列表 -->
+      <div class="card">
+        <div class="card-hd">
+          <h3>用户</h3>
+          <div style="display:flex;gap:8px">
+            <select class="input" style="width:120px;height:30px;font-size:12px"><option>全部角色</option><option>管理员</option><option>操作员</option><option>只读</option></select>
+            <select class="input" style="width:100px;height:30px;font-size:12px"><option>全部状态</option><option>启用</option><option>禁用</option></select>
+            <button class="btn primary sm" onclick="document.getElementById('userModal').classList.add('show')">＋ 创建用户</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>用户</th><th>角色</th><th>状态</th><th>最近登录</th><th>创建时间</th><th style="width:170px">操作</th></tr></thead>
+            <tbody id="userBody"></tbody>
+          </table>
+        </div>
+        <div class="pager"><span>共 5 个用户 · 1 管理员 / 2 操作员 / 2 只读</span><span>‹ 1 / 1 ›</span></div>
+      </div>
+
+      <!-- 角色权限矩阵 -->
+      <div class="card">
+        <div class="card-hd"><h3>角色权限矩阵</h3><span class="extra">服务端按此矩阵强校验，前端仅做展示优化</span></div>
+        <div class="tbl-wrap">
+          <table class="tbl perm-matrix">
+            <thead><tr><th>功能模块</th><th>👑 管理员 admin</th><th>🛠 操作员 operator</th><th>👁 只读 viewer</th></tr></thead>
+            <tbody>
+              <tr><td>仪表盘 / 查看结果</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>爬取源配置（增删改）</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+              <tr><td>爬取 / 验活参数</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+              <tr><td>任务创建 / 取消</td><td class="yes">✓</td><td class="yes">✓</td><td class="no">—</td></tr>
+              <tr><td>节点导出 / 产物下载</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+              <tr><td>存储目标编辑 / 启停</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+              <tr><td>用户管理</td><td class="yes">✓</td><td class="no">—</td><td class="no">—</td></tr>
+              <tr><td>系统设置 / 密码</td><td class="yes">✓</td><td class="yes">✓</td><td class="yes">✓</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- 操作审计（最近） -->
+      <div class="card">
+        <div class="card-hd"><h3>最近用户操作</h3><span class="extra">审计日志保留 90 天</span></div>
+        <table class="tbl">
+          <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>对象</th><th>结果</th></tr></thead>
+          <tbody>
+            <tr><td class="muted">今天 13:58</td><td>admin</td><td>创建用户</td><td class="mono">lisi（只读）</td><td><span class="tag ok">成功</span></td></tr>
+            <tr><td class="muted">今天 11:06</td><td>zhangsan</td><td>触发任务</td><td class="mono">run #1042</td><td><span class="tag ok">成功</span></td></tr>
+            <tr><td class="muted">昨天 16:20</td><td>admin</td><td>禁用用户</td><td class="mono">wangwu</td><td><span class="tag ok">成功</span></td></tr>
+            <tr><td class="muted">昨天 09:12</td><td>zhangsan</td><td>触发任务</td><td class="mono">run #1041</td><td><span class="tag ok">成功</span></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 创建用户弹窗 ================= -->
+<div class="modal-mask" id="userModal">
+  <div class="modal narrow">
+    <div class="modal-hd">
+      <h3>创建用户</h3>
+      <span class="close-x" onclick="document.getElementById('userModal').classList.remove('show')">✕</span>
+    </div>
+    <div class="modal-bd">
+      <div class="callout gray">账号创建后首次登录无需改密；建议为不同岗位分配<b>操作员 / 只读</b>角色，遵循最小权限原则。</div>
+      <div class="form-item">
+        <label><span class="req">*</span>用户名</label>
+        <input class="input" placeholder="3-32 位字母、数字或下划线">
+      </div>
+      <div class="form-item">
+        <label><span class="req">*</span>初始密码</label>
+        <input class="input" type="password" placeholder="至少 8 位，包含字母与数字">
+      </div>
+      <div class="form-item">
+        <label>角色</label>
+        <div class="radio-cards c3" id="roleCards" style="margin-top:4px">
+          <div class="radio-card" data-r="admin"><h5>👑 管理员</h5><p>全部权限</p></div>
+          <div class="radio-card sel" data-r="operator"><h5>🛠 操作员</h5><p>源/参数/任务</p></div>
+          <div class="radio-card" data-r="viewer"><h5>👁 只读</h5><p>仅查看</p></div>
+        </div>
+      </div>
+      <div class="sw-row" style="margin-top:6px">
+        <span class="switch on" id="enableSwitch" onclick="this.classList.toggle('on')"></span>
+        <span style="font-size:13px">创建后立即启用</span>
+      </div>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" onclick="document.getElementById('userModal').classList.remove('show')">取消</button>
+      <button class="btn primary" onclick="submitUser()">创建</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const USERS=[
+  {u:'admin',role:'admin',enable:true,last:'刚刚',created:'2026-09-01 10:00',me:true},
+  {u:'zhangsan',role:'operator',enable:true,last:'今天 14:02',created:'2026-09-20 09:30'},
+  {u:'lisi',role:'viewer',enable:true,last:'昨天 17:41',created:'2026-10-04 13:58'},
+  {u:'wangwu',role:'operator',enable:false,last:'10-01 11:20',created:'2026-09-25 15:12'},
+  {u:'zhaoliu',role:'viewer',enable:false,last:'09-28 08:55',created:'2026-09-28 08:50'},
+];
+const ROLE={admin:['管理员','admin'],operator:['操作员','operator'],viewer:['只读','viewer']};
+function renderUsers(){
+  document.getElementById('userBody').innerHTML=USERS.map(u=>`
+    <tr>
+      <td><div class="u-name"><span class="avatar ${u.role==='admin'?'':u.role==='operator'?'op':'vw'}">${u.u[0].toUpperCase()}</span>
+        <div><b>${u.u}</b>${u.me?' <span class="tag info plain" style="margin-left:4px">当前登录</span>':''}</div></div></td>
+      <td><span class="role-tag ${u.role}">${ROLE[u.role][0]}</span></td>
+      <td><span class="switch ${u.enable?'on':''}" onclick="toggleUser('${u.u}',this)"></span></td>
+      <td class="muted">${u.last}</td>
+      <td class="muted">${u.created}</td>
+      <td class="acts">
+        <a class="btn link" onclick="alert('原型示意：编辑 ${u.u}')">编辑</a>
+        <a class="btn link" onclick="alert('原型示意：重置 ${u.u} 的密码')">重置密码</a>
+        ${u.me?'':'<a class="btn link" style="color:var(--error)" onclick="delUser(\''+u.u+'\')">删除</a>'}
+      </td>
+    </tr>`).join('');
+}
+function toggleUser(u,el){
+  const user=USERS.find(x=>x.u===u);
+  if(user.role==='admin'&&user.enable){alert('系统至少保留一个启用的管理员账号，无法禁用');return;}
+  el.classList.toggle('on');
+}
+function delUser(u){
+  const user=USERS.find(x=>x.u===u);
+  if(user.role==='admin'&&USERS.filter(x=>x.role==='admin'&&x.enable).length<=1){alert('不允许删除最后一个管理员');return;}
+  if(!confirm(`确认删除用户 ${u}？\n删除后该用户立即无法登录，操作不可恢复。`))return;
+  const i=USERS.findIndex(x=>x.u===u);
+  if(i>-1)USERS.splice(i,1);
+  renderUsers();
+}
+document.querySelectorAll('#roleCards .radio-card').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#roleCards .radio-card').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+}));
+document.getElementById('userModal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show')});
+function submitUser(){
+  document.getElementById('userModal').classList.remove('show');
+  alert('原型示意：用户创建成功\n\n角色：操作员（operator）\n状态：启用\n\n真实环境：密码经 SHA256+bcrypt 哈希后入库；操作员登录后仅见权限内菜单。');
+}
+renderUsers();
+</script>
+</body>
+</html>

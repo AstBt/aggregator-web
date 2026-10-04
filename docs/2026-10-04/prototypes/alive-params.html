@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>验活参数 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .adv-card{border:1px dashed #d9d9d9}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item active" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">配置<span>/</span>验活参数</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar op">O</span><span><span class="nm">zhangsan</span><br><span class="rl">操作员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout gray">💓 本页配置<b>节点验活行为</b>：mihomo 内核对每个节点发起延迟探测。<b>最大存活延迟</b>是判定阈值——节点实测延迟超过该值即计为失效（与「验活超时」不同：超时是单次探测请求的最长等待时间）。默认值将在创建任务时预填，任务中可临时覆盖。</div>
+
+      <!-- 核心参数 -->
+      <div class="card">
+        <div class="card-hd"><h3>核心参数</h3><span class="extra">滑块调整，实时预览</span></div>
+        <div class="slider-row">
+          <div class="s-lb">节点验活超时<small>timeout · 500-30000 ms</small></div>
+          <input type="range" min="500" max="30000" step="500" value="5000">
+          <div class="s-val" data-unit="ms">5000 <small>ms</small></div>
+        </div>
+        <div class="slider-row">
+          <div class="s-lb">最大存活延迟<small>delay · 阈值，实测超过即判失效</small></div>
+          <input type="range" min="500" max="15000" step="500" value="5000">
+          <div class="s-val" data-unit="ms">5000 <small>ms</small></div>
+        </div>
+        <div class="slider-row">
+          <div class="s-lb">验活线程数<small>num_threads · 1-128</small></div>
+          <input type="range" min="1" max="128" value="64">
+          <div class="s-val">64</div>
+        </div>
+        <div class="slider-row">
+          <div class="s-lb">HTTP 重试次数<small>retry · 1-10</small></div>
+          <input type="range" min="1" max="10" value="3">
+          <div class="s-val">3</div>
+        </div>
+      </div>
+
+      <!-- 测试 URL -->
+      <div class="card">
+        <div class="card-hd">
+          <h3>测试 URL</h3>
+          <div class="test-conn">
+            <span class="test-result" id="urlResult" style="display:none"></span>
+            <button class="btn sm" onclick="testUrl(this)">🔌 测试连通性</button>
+          </div>
+        </div>
+        <div class="callout blue" style="margin-bottom:14px">
+          🔀 两种探测路径不同：<b>本页「测试连通性」</b>在「爬取参数」启用本地代理时<b>经本地代理</b>发出（验证代理本身可用）；<b>实际节点验活</b>由 mihomo 内核<b>经待测节点自身直连</b>测试 URL，不经过本地代理。
+          <div style="margin-top:6px;font-size:12px">当前本地代理：<b id="proxyState">已启用</b>（http://127.0.0.1:7897 · 于「爬取参数」页配置）</div>
+        </div>
+        <div class="form-item full">
+          <label>验活探测地址列表 <span class="hint">标记 ☑ 的为当前生效 URL；可自定义增删</span></label>
+          <div id="urlList"></div>
+          <div style="display:flex;gap:8px;margin-top:10px">
+            <input class="input mono" id="newUrl" placeholder="https://… 输入后点击添加" style="flex:1">
+            <button class="btn" onclick="addUrl()">＋ 添加</button>
+          </div>
+          <div class="err-msg" id="urlErr">请输入合法的 http(s) 地址</div>
+        </div>
+        <div class="slider-hint">建议选择稳定且地理位置中立的探测地址；节点平均延迟会以生效 URL 的 RTT 为准。</div>
+      </div>
+
+      <!-- 高级选项 -->
+      <div class="card adv-card">
+        <div class="card-hd"><h3>高级选项</h3><span class="extra">慎重调整</span></div>
+        <div style="display:flex;gap:26px;flex-wrap:wrap">
+          <label class="checkbox"><input type="checkbox" checked> 控制器故障时保留上轮已发布结果</label>
+          <label class="checkbox"><input type="checkbox" checked> 节点规范化（地区 / 住宅 IP 识别）</label>
+        </div>
+        <div class="slider-hint" style="margin-top:10px">验活是回测 / 爬取+聚合模式的既定核心步骤，无需在任务创建时单独开关；未通过验活的节点不会写入任何存储目标。</div>
+      </div>
+
+      <!-- 操作区 -->
+      <div class="card">
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <button class="btn primary" onclick="alert('原型示意：验活参数已保存，创建任务时预填')">保存参数</button>
+          <button class="btn" onclick="alert('原型示意：恢复默认值')">恢复默认</button>
+          <span style="flex:1"></span>
+          <button class="btn" onclick="alert('原型示意：从 my-config.json 导入')">⤒ 导入配置</button>
+          <button class="btn" onclick="alert('原型示意：导出当前验活参数为 JSON')">⤓ 导出配置</button>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<script>
+document.querySelectorAll('.slider-row input[type=range]').forEach(el=>{
+  const sync=()=>{
+    const pct=(el.value-el.min)/(el.max-el.min)*100;
+    el.style.setProperty('--fill',pct+'%');
+    const v=el.parentElement.querySelector('.s-val');
+    const unit=v.dataset.unit||'';
+    v.innerHTML=el.value+(unit?' <small>'+unit+'</small>':'');
+  };
+  sync();el.addEventListener('input',sync);
+});
+/* ================= 测试 URL 列表管理 ================= */
+let testUrls=[
+  {url:'https://www.google.com/generate_204',on:true},
+  {url:'https://www.gstatic.com/generate_204',on:false},
+  {url:'https://cp.cloudflare.com',on:false},
+];
+function renderUrls(){
+  document.getElementById('urlList').innerHTML=testUrls.map((u,i)=>`
+    <div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px dashed #f2f3f5">
+      <input type="radio" name="primaryUrl" ${u.on?'checked':''} onchange="setPrimary(${i})" style="accent-color:var(--primary)">
+      <input class="input mono" value="${u.url}" onchange="testUrls[${i}].url=this.value" style="flex:1">
+      ${u.on?'<span class="tag info plain" style="flex:none">生效中</span>':'<a class="btn link" style="flex:none" onclick="setPrimary('+i+')">设为生效</a>'}
+      <a class="btn link" style="color:var(--error);flex:none" onclick="delUrl(${i})">删除</a>
+    </div>`).join('');
+}
+function setPrimary(i){testUrls.forEach((u,k)=>u.on=k===i);renderUrls();}
+function delUrl(i){
+  if(testUrls[i].on&&testUrls.length<=1){alert('至少保留一个测试 URL');return;}
+  const wasOn=testUrls[i].on;
+  testUrls.splice(i,1);
+  if(wasOn&&testUrls.length)testUrls[0].on=true;
+  renderUrls();
+}
+function addUrl(){
+  const v=document.getElementById('newUrl').value.trim();
+  const err=document.getElementById('urlErr');
+  if(!/^https?:\/\/.+/.test(v)){err.classList.add('show');return;}
+  err.classList.remove('show');
+  testUrls.push({url:v,on:false});
+  document.getElementById('newUrl').value='';
+  renderUrls();
+}
+document.getElementById('newUrl').addEventListener('keydown',e=>{if(e.key==='Enter'){e.preventDefault();addUrl();}});
+function testUrl(btn){
+  const r=document.getElementById('urlResult');
+  r.style.display='inline-flex';r.className='test-result testing';
+  r.innerHTML='<span class="spin" style="border-color:rgba(9,88,217,.3);border-top-color:#0958d9"></span>探测中…';
+  btn.disabled=true;
+  setTimeout(()=>{
+    btn.disabled=false;
+    const ok=Math.random()>0.2;
+    const via=document.getElementById('proxyState').textContent==='已启用'?'经本地代理':'直连';
+    r.className='test-result '+(ok?'ok':'fail');
+    r.textContent=ok?`HTTP 204 · ${via} 86ms`:`超时 · ${via} 3000ms 无响应`;
+  },1000);
+}
+renderUrls();
+</script>
+</body>
+</html>

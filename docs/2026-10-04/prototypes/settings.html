@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>系统设置 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item active" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">系统<span>/</span>系统设置</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar">A</span><span><span class="nm">admin</span><br><span class="rl">管理员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout blue">🔧 系统设置。爬取规则请前往 <a href="crawl-params.html" style="color:var(--primary)">「爬取参数」</a>，验活参数前往 <a href="alive-params.html" style="color:var(--primary)">「验活参数」</a>，结果写入目标前往 <a href="storage.html" style="color:var(--primary)">「结果存储」</a>，账号权限前往 <a href="users.html" style="color:var(--primary)">「用户管理」</a>。</div>
+
+      <!-- 个人信息与密码 -->
+      <div class="card">
+        <div class="card-hd"><h3>我的账号</h3></div>
+        <div class="form-grid">
+          <div class="form-item"><label>用户名</label><input class="input" value="admin" disabled></div>
+          <div class="form-item"><label>角色</label><input class="input" value="管理员（admin）" disabled></div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd"><h3>修改密码</h3></div>
+        <div class="callout warn">🔒 密码采用 bcrypt 哈希存储；修改后当前账号在其他设备的登录会话将全部失效。</div>
+        <div class="form-grid">
+          <div class="form-item"><label>原密码</label><input class="input" type="password" placeholder="请输入原密码" form="pwForm"></div>
+          <div class="form-item"></div>
+          <div class="form-item"><label>新密码</label><input class="input" type="password" placeholder="至少 8 位，包含字母与数字" form="pwForm"></div>
+          <div class="form-item"><label>确认新密码</label><input class="input" type="password" placeholder="再次输入新密码" form="pwForm"></div>
+        </div>
+        <button class="btn primary" onclick="alert('原型示意：密码修改成功，其他会话已失效')">修改密码</button>
+      </div>
+
+      <!-- 关于 -->
+      <div class="card">
+        <div class="card-hd"><h3>关于</h3></div>
+        <div class="form-grid">
+          <div class="kv-row"><span class="k" style="width:130px">产品名称</span><span>Aggregator Web 管理平台</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">版本</span><span>v2.0-web（Alpha）</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">前端模板</span><span>Vue Vben Admin 5.8.0（ant-design-vue）</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">后端</span><span>FastAPI + SQLAlchemy 2.x</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">聚合引擎</span><span>subscribe/（复用现有 Python 实现）</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">运行环境</span><span>Python ≥ 3.13 · Windows / Linux</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">开源许可</span><span>MIT</span></div>
+          <div class="kv-row"><span class="k" style="width:130px">文档</span><span><a class="btn link" href="../PRD.md">PRD.md</a> · <a class="btn link" href="index.html">原型索引</a></span></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+</body>
+</html>

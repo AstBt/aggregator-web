@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>结果存储 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .tgt-type{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600}
+  .tgt-ico{width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex:none}
+  .mask{display:inline-block;background:#f5f5f5;border:1px solid var(--border);border-radius:4px;padding:0 7px;font-family:Consolas,monospace;font-size:11.5px;color:var(--text-3)}
+  .policy-item{display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px dashed #f2f2f2;font-size:13px}
+  .policy-item:last-child{border:none}
+  .policy-item .nm{width:150px;font-weight:500}
+  .policy-item .tgts{flex:1;display:flex;gap:8px;flex-wrap:wrap}
+  .pick{border:1px solid var(--border);border-radius:6px;padding:3px 11px;font-size:12px;cursor:pointer;background:#fff;color:var(--text-2)}
+  .pick.on{border-color:var(--primary);background:#f0f7ff;color:var(--primary);font-weight:500}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item active" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">配置<span>/</span>结果存储</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar">A</span><span><span class="nm">admin</span><br><span class="rl">管理员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout blue">💾 管理所有<b>存储目标</b>（本地目录与 Gist 等远端后端一视同仁，可创建多个、自由启停）。目标是纯发布出口——每轮任务往哪写，由<b>创建任务时绑定的目标</b>决定（回测 / 爬取+聚合模式必填，仅爬取模式不绑定）；旧数据（订阅池 / remains）只从系统库读取，与目标无关。token 类凭证加密保存，界面仅显示掩码。</div>
+
+      <!-- 存储目标列表 -->
+      <div class="card">
+        <div class="card-hd">
+          <h3>存储目标</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm" onclick="alert('原型示意：从 my-config.json 的 storage 节导入目标')">⤒ 导入</button>
+            <button class="btn sm" onclick="alert('原型示意：导出目标清单（不含凭证明文）')">⤓ 导出</button>
+            <button class="btn primary sm" onclick="openTgt()">＋ 添加存储目标</button>
+          </div>
+        </div>
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead><tr><th>名称</th><th>类型</th><th>目标摘要</th><th>凭证</th><th>启用</th><th>最近写入</th><th style="width:220px">操作</th></tr></thead>
+            <tbody id="tgtBody"></tbody>
+          </table>
+        </div>
+        <div class="pager"><span id="tgtCount"></span><span>‹ 1 / 1 ›</span></div>
+      </div>
+
+      <!-- 任务绑定说明 -->
+      <div class="card">
+        <div class="card-hd"><h3>数据如何流转</h3><a class="btn link" href="tasks.html">去创建任务 →</a></div>
+        <div class="bars" style="gap:14px">
+          <div class="bar-row" style="grid-template-columns:150px 1fr"><span class="muted">🗄 系统库（权威源）</span><div style="font-size:12.5px;color:var(--text-2);line-height:1.7">订阅与存活节点记录的唯一权威源。订阅池 = 上轮 full/回测存活节点的来源订阅（实时派生）；remains = 上轮存活节点。</div></div>
+          <div class="bar-row" style="grid-template-columns:150px 1fr"><span class="muted">🕷️ 仅爬取</span><div style="font-size:12.5px;color:var(--text-2);line-height:1.7">爬取并验证订阅 → 只入系统库供浏览；<b>不绑定</b>存储目标，不发布、不改变订阅池与 remains。</div></div>
+          <div class="bar-row" style="grid-template-columns:150px 1fr"><span class="muted">🧬 回测</span><div style="font-size:12.5px;color:var(--text-2);line-height:1.7">不爬取；从<b>系统库</b>读上轮订阅池与 remains → 重新拉取 → 验活 → 产物写入绑定目标。</div></div>
+          <div class="bar-row" style="grid-template-columns:150px 1fr"><span class="muted">⚡ 爬取+聚合</span><div style="font-size:12.5px;color:var(--text-2);line-height:1.7">爬取新订阅 → 与系统库订阅池、remains 合并 → 验活 → 转换 → 写入绑定目标。</div></div>
+          <div class="bar-row" style="grid-template-columns:150px 1fr"><span class="muted">📤 绑定目标（发布）</span><div style="font-size:12.5px;color:var(--text-2);line-height:1.7">纯发布出口，不作数据源。绑定多目标时产物分别完整写入每个目标；发布<b>准原子</b>——全部写成功任务才置成功，中断/部分失败记 <span class="mono">publish_pending</span>，任务详情可「重试发布」对失败目标补偿重放。</div></div>
+        </div>
+        <div class="callout gray" style="margin-top:14px">因此不存在独立的"持久化绑定""写入策略""数据源目标"设置：旧数据只从系统库读，写入位置即任务绑定的目标。单一目标写入失败不影响其他目标与系统库可用性（错误记入写入记录）。</div>
+      </div>
+
+      <!-- 本地目录占用 -->
+      <div class="card">
+        <div class="card-hd"><h3>本地目录占用</h3><a class="btn link" href="nodes.html">前往节点浏览 →</a></div>
+        <div class="mini-stats" style="margin-bottom:0">
+          <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">🗄</span><div><div class="v">18.6 MB</div><div class="k">聚合数据库</div></div></div>
+          <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">📦</span><div><div class="v">7.4 MB</div><div class="k">节点快照（保留 5 份）</div></div></div>
+          <div class="mini"><span class="m-ico" style="background:#f9f0ff;color:#722ed1">📤</span><div><div class="v">4.2 MB</div><div class="k">转换产物</div></div></div>
+          <div class="mini"><span class="m-ico" style="background:#fff7e6;color:#d48806">📝</span><div><div class="v">1.1 MB</div><div class="k">任务日志</div></div></div>
+        </div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 创建/编辑存储目标弹窗 ================= -->
+<div class="modal-mask" id="tgtModal">
+  <div class="modal">
+    <div class="modal-hd">
+      <h3 id="tgtModalTitle">添加存储目标</h3>
+      <span class="close-x" onclick="document.getElementById('tgtModal').classList.remove('show')">✕</span>
+    </div>
+    <div class="modal-bd">
+      <div class="section-title">目标类型</div>
+      <div class="radio-cards c3" id="tgtTypes">
+        <div class="radio-card sel" data-t="local"><h5>📁 本地目录</h5><p>可创建多个，与远端目标同等管理</p></div>
+        <div class="radio-card" data-t="gist"><h5>🐙 GitHub Gist</h5><p>免费匿名 gist 服务</p></div>
+        <div class="radio-card" data-t="pastegg"><h5>📋 PasteGG</h5><p>paste.gg</p></div>
+        <div class="radio-card" data-t="pastefy"><h5>📋 Pastefy</h5><p>pastefy.app</p></div>
+        <div class="radio-card" data-t="imperial"><h5>📋 Imperial</h5><p>imperialb.in</p></div>
+        <div class="radio-card" data-t="qbin"><h5>📋 QBin</h5><p>qbin.me</p></div>
+      </div>
+
+      <div id="tgtFields" style="margin-top:18px"></div>
+    </div>
+    <div class="modal-ft">
+      <span class="test-result" id="tgtTestResult" style="display:none;margin-right:auto"></span>
+      <button class="btn" onclick="document.getElementById('tgtModal').classList.remove('show')">取消</button>
+      <button class="btn" onclick="testTgt(this)">🔌 测试连接</button>
+      <button class="btn primary" onclick="saveTgt()">保存</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const TYPE_META={
+  local:{name:'本地目录',ico:'📁',bg:'#e6f4ff',fields:[['dir','数据目录','D:\\vibecoding\\aggregator-main\\data\\local',1],['keep','快照保留份数','5',0]]},
+  gist:{name:'GitHub Gist',ico:'🐙',bg:'#f6ffed',fields:[['gist_id','Gist ID','6b08d288fa94041ba4ba88477fb776d4',1],['filename','默认文件名','free-clash.yaml',1],['token','访问令牌 PUSH_TOKEN','',2]]},
+  pastegg:{name:'PasteGG',ico:'📋',bg:'#fff7e6',fields:[['base','服务地址','https://api.paste.gg',1],['token','访问令牌','',2]]},
+  pastefy:{name:'Pastefy',ico:'📋',bg:'#f9f0ff',fields:[['base','服务地址','https://pastefy.app',1],['token','访问令牌','',2]]},
+  imperial:{name:'Imperial',ico:'📋',bg:'#e6fffb',fields:[['base','服务地址','https://imperialb.in',1],['token','访问令牌','',2]]},
+  qbin:{name:'QBin',ico:'📋',bg:'#fff2f0',fields:[['base','服务地址','https://qbin.me',1],['token','访问令牌','',2]]},
+};
+const TARGETS=[
+  {id:1,name:'data-local',type:'local',enable:true,summary:'D:\\vibecoding\\aggregator-main\\data\\local',token:null,last:'今天 11:05 · 成功',lastOk:true},
+  {id:2,name:'gist-main',type:'gist',enable:true,summary:'gist 6b08d288… · file: crawled-subs.json',token:'ghp_1XoE…vES',last:'今天 11:05 · 成功',lastOk:true},
+  {id:3,name:'pastegg-backup',type:'pastegg',enable:false,summary:'https://api.paste.gg',token:'pg_••••••••••••',last:'昨天 03:05 · 失败 429',lastOk:false},
+];
+function renderTargets(){
+  document.getElementById('tgtBody').innerHTML=TARGETS.map(t=>{
+    const m=TYPE_META[t.type];
+    return `<tr>
+      <td><b>${t.name}</b></td>
+      <td><span class="tgt-type"><span class="tgt-ico" style="background:${m.bg}">${m.ico}</span>${m.name}</span></td>
+      <td class="mono" style="font-size:11.5px;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${t.summary}">${t.summary}</td>
+      <td>${t.token?`<span class="mask">${t.token}</span>`:'<span class="muted">无需凭证</span>'}</td>
+      <td><span class="switch ${t.enable?'on':''}" onclick="toggleTgt(${t.id},this)"></span></td>
+      <td><span class="tag ${t.lastOk?'ok':'err'}">${t.last}</span></td>
+      <td class="acts">
+        <a class="btn link" onclick="testTgtRow(this,${t.id})">测试连接</a>
+        <a class="btn link" onclick="editTgt(${t.id})">编辑</a>
+        <a class="btn link" style="color:var(--error)" onclick="delTgt('+t.id+')">删除</a>
+      </td>
+    </tr>`;
+  }).join('');
+  document.getElementById('tgtCount').textContent=`共 ${TARGETS.length} 个目标 · 启用 ${TARGETS.filter(t=>t.enable).length}`;
+}
+function toggleTgt(id,el){
+  const t=TARGETS.find(x=>x.id===id);
+  el.classList.toggle('on');
+  t.enable=el.classList.contains('on');
+}
+function delTgt(id){
+  if(!confirm('确认删除该存储目标？\n删除后不再向该目标写入，历史文件不会清理。'))return;
+  const i=TARGETS.findIndex(x=>x.id===id);
+  if(i>-1)TARGETS.splice(i,1);
+  renderTargets();
+}
+function renderFields(type){
+  const m=TYPE_META[type];
+  document.getElementById('tgtFields').innerHTML=m.fields.map(f=>{
+    const [k,lb,ph,kind]=f;
+    const hint=kind===2?'<span class="hint">加密存储 · 掩码回显</span>':'';
+    return `<div class="form-item full"><label>${lb}${hint}</label>
+      <input class="input ${kind===2?'mono':''}" placeholder="${ph}" value="${kind===2?'':''}"></div>`;
+  }).join('')+`<div class="sw-row"><span class="switch on" onclick="this.classList.toggle('on')"></span><span style="font-size:13px">保存后启用；目标可随时在列表中停用或删除</span></div>`;
+}
+function openTgt(){
+  document.getElementById('tgtModalTitle').textContent='添加存储目标';
+  document.querySelectorAll('#tgtTypes .radio-card').forEach((c,i)=>c.classList.toggle('sel',i===0));
+  renderFields('local');
+  document.getElementById('tgtTestResult').style.display='none';
+  document.getElementById('tgtModal').classList.add('show');
+}
+function editTgt(id){
+  const t=TARGETS.find(x=>x.id===id);
+  openTgt();
+  document.getElementById('tgtModalTitle').textContent='编辑存储目标 · '+t.name;
+  document.querySelectorAll('#tgtTypes .radio-card').forEach(c=>c.classList.toggle('sel',c.dataset.t===t.type));
+  renderFields(t.type);
+}
+document.querySelectorAll('#tgtTypes .radio-card').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#tgtTypes .radio-card').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');
+  renderFields(c.dataset.t);
+  document.getElementById('tgtTestResult').style.display='none';
+}));
+document.getElementById('tgtModal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show')});
+function testTgt(btn){
+  const r=document.getElementById('tgtTestResult');
+  r.style.display='inline-flex';r.className='test-result testing';
+  r.innerHTML='<span class="spin" style="border-color:rgba(9,88,217,.3);border-top-color:#0958d9"></span>正在测试…';
+  setTimeout(()=>{
+    const ok=Math.random()>0.3;
+    r.className='test-result '+(ok?'ok':'fail');
+    r.textContent=ok?'连接成功 · 读写权限正常 · 180ms':'连接失败 · 凭证无效或服务不可达';
+  },1300);
+}
+function testTgtRow(btn,id){
+  const old=btn.textContent;
+  btn.innerHTML='<span class="spin" style="border-color:rgba(22,119,255,.3);border-top-color:#1677ff"></span>';
+  setTimeout(()=>{
+    btn.textContent=Math.random()>0.2?'✓ 可用':'✗ 失败';
+    btn.style.color=btn.textContent.startsWith('✓')?'var(--success-tx)':'var(--error-tx)';
+    setTimeout(()=>{btn.textContent=old;btn.style.color='';},2500);
+  },1100);
+}
+function saveTgt(){
+  document.getElementById('tgtModal').classList.remove('show');
+  alert('原型示意：存储目标已保存\n\n凭证经加密保存，列表仅显示掩码；远端目标需启用后才会接收写入。');
+}
+renderTargets();
+</script>
+</body>
+</html>

@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>订阅结果 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .url-cell{max-width:400px}
+  .url-cell .u{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:Consolas,monospace;font-size:12px;color:var(--text-1)}
+  .url-cell .h{font-size:11.5px;color:var(--text-3)}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item active" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">结果<span>/</span>订阅结果</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar">A</span><span><span class="nm">admin</span><br><span class="rl">管理员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="mini-stats">
+        <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">📡</span><div><div class="v">68</div><div class="k">累计订阅</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">✅</span><div><div class="v">41</div><div class="k">可用订阅（上轮验活）</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#fff2f0;color:#cf1322">❌</span><div><div class="v">8</div><div class="k">失效订阅</div></div></div>
+        <div class="mini"><span class="m-ico" style="background:#f5f5f5;color:rgba(0,0,0,.45)">🕓</span><div><div class="v">19</div><div class="k">待验证</div></div></div>
+      </div>
+
+      <div class="card">
+        <div class="card-hd">
+          <h3>订阅池</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm" onclick="alert('原型示意：导出 CSV')">⤓ 导出 CSV</button>
+            <button class="btn sm" onclick="alert('原型示意：本地快照路径 data/local/crawled-subs.json')">💾 本地快照</button>
+          </div>
+        </div>
+
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
+          <select class="input" style="width:130px;height:32px;font-size:12.5px"><option>全部来源</option><option>TELEGRAM</option><option>GITHUB</option><option>GIST</option><option>PAGE</option><option>V2RAYSE</option></select>
+          <select class="input" style="width:120px;height:32px;font-size:12.5px"><option>全部状态</option><option>存活</option><option>失效</option><option>待验证</option></select>
+          <div class="seg" id="runSeg">
+            <button class="on">最新一轮 #1042</button><button>#1041</button><button>#1040</button>
+          </div>
+          <input class="input" style="flex:1;min-width:220px" placeholder="🔍 搜索订阅 URL / 域名关键词">
+          <button class="btn sm primary">查询</button>
+          <button class="btn sm">重置</button>
+        </div>
+
+        <div class="tbl-wrap">
+          <table class="tbl">
+            <thead>
+              <tr>
+                <th style="width:30px"><input type="checkbox"></th>
+                <th>订阅 URL</th><th>来源</th><th>状态</th><th>连续失败</th><th>贡献节点(存活)</th><th>首次发现</th><th>最近存活</th><th style="width:70px">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://oneclickvpnkeys.example.com/link/abc123?sub=3</div><div class="h">oneclickvpnkeys.example.com</div></td><td><span class="tag info">TELEGRAM</span></td><td><span class="tag ok">存活</span></td><td>0</td><td><b>14</b> / <span style="color:var(--success-tx)">11</span></td><td class="muted">09-21 11:05</td><td class="muted">今天 11:05</td><td><a class="btn link" onclick="openDrawer(0)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://raw.githubusercontent.com/xxx/yyy/main/sub.txt</div><div class="h">github.com</div></td><td><span class="tag ok">GITHUB</span></td><td><span class="tag ok">存活</span></td><td>0</td><td><b>42</b> / <span style="color:var(--success-tx)">26</span></td><td class="muted">09-15 03:05</td><td class="muted">今天 11:05</td><td><a class="btn link" onclick="openDrawer(1)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://sub.v2rayse.example/api/v1/client/subscribe?token=0123456789abcdef</div><div class="h">v2rayse.example</div></td><td><span class="tag purple">V2RAYSE</span></td><td><span class="tag ok">存活</span></td><td>0</td><td><b>8</b> / <span style="color:var(--success-tx)">6</span></td><td class="muted">10-01 11:05</td><td class="muted">今天 11:05</td><td><a class="btn link" onclick="openDrawer(2)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://siteA.example.com/s/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c</div><div class="h">siteA.example.com</div></td><td><span class="tag info">PAGE</span></td><td><span class="tag ok">存活</span></td><td>0</td><td><b>6</b> / <span style="color:var(--success-tx)">4</span></td><td class="muted">10-02 11:05</td><td class="muted">今天 11:05</td><td><a class="btn link" onclick="openDrawer(3)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://thevpninfo.example/free/link/x9k2m4?clash=1</div><div class="h">thevpninfo.example</div></td><td><span class="tag warn">TELEGRAM</span></td><td><span class="tag err">失效</span></td><td><span class="tag err">2 次</span></td><td>0 / 0</td><td class="muted">09-25 11:05</td><td class="muted">10-02 11:05</td><td><a class="btn link" onclick="openDrawer(4)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://dead-airport.example/api/v1/client/subscribe?token=fedcba9876543210</div><div class="h">dead-airport.example</div></td><td><span class="tag gray">TEMPORARY</span></td><td><span class="tag err">失效</span></td><td><span class="tag err">6 次</span></td><td>0 / 0</td><td class="muted">08-30 11:05</td><td class="muted">09-12 11:05</td><td><a class="btn link" onclick="openDrawer(5)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://gist.githubusercontent.com/anon/9f86d081884c7d65/full</div><div class="h">gist.githubusercontent.com</div></td><td><span class="tag ok">GIST</span></td><td><span class="tag ok">存活</span></td><td>0</td><td><b>3</b> / <span style="color:var(--success-tx)">2</span></td><td class="muted">10-03 03:05</td><td class="muted">今天 11:05</td><td><a class="btn link" onclick="openDrawer(6)">详情</a></td></tr>
+              <tr><td><input type="checkbox"></td><td class="url-cell"><div class="u">https://siteB.example.com/link/q1w2e3r4?sub=1</div><div class="h">siteB.example.com</div></td><td><span class="tag info">PAGE</span></td><td><span class="tag warn">待验证</span></td><td><span class="tag warn">1 次</span></td><td>—</td><td class="muted">今天 14:02</td><td class="muted">—</td><td><a class="btn link" onclick="openDrawer(7)">详情</a></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pager"><span>共 68 条 · 已选 0 条 <a class="btn link">批量导出所选</a></span><span>‹ 1 / 9 ›</span></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 订阅详情抽屉 ================= -->
+<div class="drawer-mask" id="drawerMask" onclick="closeDrawer()"></div>
+<aside class="drawer" id="drawer">
+  <div class="drawer-hd"><h3>订阅详情</h3><span class="btn link" onclick="closeDrawer()" style="font-size:16px">✕</span></div>
+  <div class="drawer-bd">
+    <div class="kv-row"><span class="k">URL</span><span class="v mono" id="d-url"></span></div>
+    <div class="kv-row"><span class="k">来源</span><span class="v" id="d-origin"></span></div>
+    <div class="kv-row"><span class="k">状态</span><span class="v" id="d-status"></span></div>
+    <div class="kv-row"><span class="k">连续失败</span><span class="v" id="d-errors"></span></div>
+    <div class="kv-row"><span class="k">首次发现</span><span class="v muted" id="d-first"></span></div>
+    <div class="kv-row"><span class="k">最近存活</span><span class="v muted" id="d-alive"></span></div>
+    <div class="kv-row"><span class="k">来源标签</span><span class="v" id="d-tag"></span></div>
+    <div class="kv-row"><span class="k">跳过缓存</span><span class="v" id="d-skip"></span></div>
+
+    <div class="section-title" style="font-size:13px;font-weight:600;color:var(--text-2);margin-top:16px">上轮贡献节点（存活）</div>
+    <div id="d-nodes"></div>
+
+    <div class="section-title" style="font-size:13px;font-weight:600;color:var(--text-2);margin-top:16px">历史存活趋势（近 10 轮）</div>
+    <div style="display:flex;align-items:flex-end;gap:5px;height:90px;padding:8px 4px;background:#fafbfc;border-radius:8px" id="d-trend"></div>
+  </div>
+  <div class="drawer-ft">
+    <button class="btn" onclick="alert('原型示意：立即重新验证该订阅')">重新验证</button>
+    <button class="btn" onclick="alert('原型示意：已复制链接')">复制链接</button>
+    <button class="btn primary" onclick="closeDrawer()">关闭</button>
+  </div>
+</aside>
+
+<script>
+const data=[
+  {url:"https://oneclickvpnkeys.example.com/link/abc123?sub=3",origin:"TELEGRAM",status:"存活",errors:0,first:"09-21 11:05",alive:"今天 11:05",tag:"",nodes:["VLESS-香港01 312ms","VMess-新加坡02 456ms","Trojan-日本01 189ms","SS-美国05 723ms"],trend:[8,9,11,10,12,11,12,13,13,11]},
+  {url:"https://raw.githubusercontent.com/xxx/yyy/main/sub.txt",origin:"GITHUB",status:"存活",errors:0,first:"09-15 03:05",alive:"今天 11:05",tag:"github-batch",nodes:["VMess-台湾01 221ms","VLESS-韩国03 398ms","Hysteria2-香港04 167ms","Trojan-美国12 654ms","SS-日本02 287ms","VLESS-新加坡01 341ms"],trend:[30,32,29,35,36,34,38,40,41,41]},
+  {url:"https://sub.v2rayse.example/api/v1/client/subscribe?token=0123456789abcdef",origin:"V2RAYSE",status:"存活",errors:0,first:"10-01 11:05",alive:"今天 11:05",tag:"",nodes:["VLESS-香港09 245ms","Trojan-新加坡 402ms"],trend:[0,0,0,4,5,6,6,7,6,6]},
+  {url:"https://siteA.example.com/s/9f8e7d6c5b4a3f2e1d0c9b8a7f6e5d4c",origin:"PAGE",status:"存活",errors:0,first:"10-02 11:05",alive:"今天 11:05",tag:"",nodes:["SS-香港11 356ms","VMess-美国07 812ms"],trend:[0,0,0,0,0,3,4,4,5,4]},
+  {url:"https://thevpninfo.example/free/link/x9k2m4?clash=1",origin:"TELEGRAM",status:"失效",errors:2,first:"09-25 11:05",alive:"10-02 11:05",tag:"",nodes:[],trend:[5,4,4,3,3,2,2,1,0,0]},
+  {url:"https://dead-airport.example/api/v1/client/subscribe?token=fedcba9876543210",origin:"TEMPORARY",status:"失效",errors:6,first:"08-30 11:05",alive:"09-12 11:05",tag:"",nodes:[],trend:[9,7,6,5,3,2,1,0,0,0]},
+  {url:"https://gist.githubusercontent.com/anon/9f86d081884c7d65/full",origin:"GIST",status:"存活",errors:0,first:"10-03 03:05",alive:"今天 11:05",tag:"",nodes:["Trojan-香港02 276ms","VLESS-美国08 534ms"],trend:[0,0,0,0,0,0,2,2,2,2]},
+  {url:"https://siteB.example.com/link/q1w2e3r4?sub=1",origin:"PAGE",status:"待验证",errors:1,first:"今天 14:02",alive:"—",tag:"",nodes:[],trend:[0,0,0,0,0,0,0,0,0,0]},
+];
+function openDrawer(i){
+  const d=data[i];
+  document.getElementById('d-url').textContent=d.url;
+  document.getElementById('d-origin').textContent=d.origin;
+  const st=document.getElementById('d-status');
+  st.innerHTML=d.status==="存活"?'<span class="tag ok">存活</span>':d.status==="失效"?'<span class="tag err">失效</span>':'<span class="tag warn">待验证</span>';
+  document.getElementById('d-errors').textContent=d.errors+" 次";
+  document.getElementById('d-first').textContent=d.first;
+  document.getElementById('d-alive').textContent=d.alive;
+  document.getElementById('d-tag').textContent=d.tag||'—';
+  document.getElementById('d-skip').textContent='否';
+  document.getElementById('d-nodes').innerHTML=d.nodes.length
+    ?d.nodes.map(n=>`<span class="chip" style="margin:0 8px 8px 0">🌐 ${n}</span>`).join("")
+    :'<span class="muted" style="font-size:12.5px">本轮无贡献节点</span>';
+  document.getElementById('d-trend').innerHTML=d.trend.map(v=>{
+    const h=Math.round(v/Math.max(...d.trend,1)*72);
+    return `<div title="${v}" style="flex:1;height:${Math.max(h,2)}px;background:${v?'#1677ff':'#e5e6eb'};border-radius:3px 3px 0 0"></div>`;
+  }).join("");
+  document.getElementById('drawerMask').style.display='block';
+  document.getElementById('drawer').classList.add('open');
+}
+function closeDrawer(){
+  document.getElementById('drawerMask').style.display='none';
+  document.getElementById('drawer').classList.remove('open');
+}
+document.querySelectorAll('#runSeg button').forEach(b=>b.addEventListener('click',()=>{
+  document.querySelectorAll('#runSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');
+}));
+</script>
+</body>
+</html>

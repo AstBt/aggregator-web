@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=0.95">
+<title>爬取源配置 - Aggregator 管理平台</title>
+<link rel="stylesheet" href="assets/app.css">
+<style>
+  .src-type-ico{width:30px;height:30px;border-radius:7px;display:inline-flex;align-items:center;justify-content:center;font-size:15px;flex:none}
+  .kv{font-size:12px;color:var(--text-3)}
+  .kv b{color:var(--text-2);font-weight:500}
+  .empty-tip{padding:38px;text-align:center;color:var(--text-3);font-size:13px}
+  .modal-mask{align-items:flex-start}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="side-logo"><span class="mark">🛰️</span>Aggregator<span class="ver">v2.0</span></div>
+    <nav class="side-nav">
+      <div class="nav-group">控制台</div>
+      <a class="nav-item" href="dashboard.html"><span class="ico">📊</span>仪表盘</a>
+      <div class="nav-group">配置</div>
+      <a class="nav-item active" href="sources.html"><span class="ico">🧩</span>爬取源配置</a>
+      <a class="nav-item" href="crawl-params.html"><span class="ico">📐</span>爬取参数</a>
+      <a class="nav-item" href="alive-params.html"><span class="ico">💓</span>验活参数</a>
+      <a class="nav-item" href="storage.html"><span class="ico">💾</span>结果存储</a>
+      <div class="nav-group">运行</div>
+      <a class="nav-item" href="tasks.html"><span class="ico">⚙️</span>任务管理</a>
+      <div class="nav-group">结果</div>
+      <a class="nav-item" href="subscriptions.html"><span class="ico">📡</span>订阅结果</a>
+      <a class="nav-item" href="nodes.html"><span class="ico">🌐</span>节点浏览</a>
+      <div class="nav-group">系统</div>
+      <a class="nav-item" href="users.html"><span class="ico">👥</span>用户管理</a>
+      <a class="nav-item" href="settings.html"><span class="ico">🔧</span>系统设置</a>
+    </nav>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <div class="crumb">配置<span>/</span>爬取源配置</div>
+      <div class="topbar-right">
+        <div class="icon-btn">🔔<span class="dot"></span></div>
+        <div class="user-chip"><span class="avatar op">O</span><span><span class="nm">zhangsan</span><br><span class="rl">操作员</span></span></div>
+      </div>
+    </header>
+
+    <main class="content">
+      <div class="callout gray">🧩 本页仅维护<b>爬取源信息</b>（从哪些渠道抓取）；全局爬取规则与代理请前往 <a href="crawl-params.html" style="color:var(--primary)">「爬取参数」</a>；验活相关在 <a href="alive-params.html" style="color:var(--primary)">「验活参数」</a>；结果的写入位置由创建任务时绑定的存储目标决定（<a href="storage.html" style="color:var(--primary)">「结果存储」</a>）。</div>
+
+      <div class="card">
+        <div class="card-hd">
+          <h3>爬取源</h3>
+          <div style="display:flex;gap:8px">
+            <button class="btn sm" onclick="alert('原型示意：从 my-config.json 的 crawl 节导入源')">⤒ 导入</button>
+            <button class="btn sm" onclick="alert('原型示意：导出当前源清单为 JSON')">⤓ 导出</button>
+            <button class="btn primary sm" onclick="document.getElementById('newSourceModal').classList.add('show')">＋ 新建源</button>
+          </div>
+        </div>
+
+        <div class="tabs" id="srcTabs">
+          <div class="tab active" data-t="all">全部<span class="cnt">12</span></div>
+          <div class="tab" data-t="telegram">📨 Telegram<span class="cnt">6</span></div>
+          <div class="tab" data-t="github">🐙 GitHub<span class="cnt">1</span></div>
+          <div class="tab" data-t="gist">📄 Gist<span class="cnt">1</span></div>
+          <div class="tab" data-t="page">🌐 通用网页<span class="cnt">1</span></div>
+          <div class="tab" data-t="script">🧪 脚本插件<span class="cnt">2</span></div>
+        </div>
+
+        <div class="tbl-wrap" style="margin-top:14px">
+          <table class="tbl">
+            <thead>
+              <tr><th>名称</th><th>类型</th><th>配置摘要</th><th>启用</th><th>上轮贡献</th><th>失败</th><th style="width:240px">操作</th></tr>
+            </thead>
+            <tbody id="srcBody"></tbody>
+          </table>
+        </div>
+        <div class="pager"><span>共 12 条 · 启用 10 · 禁用 2</span><span>‹ 1 / 2 ›</span></div>
+      </div>
+    </main>
+  </div>
+</div>
+
+<!-- ================= 新建源弹窗 ================= -->
+<div class="modal-mask" id="newSourceModal">
+  <div class="modal wide">
+    <div class="modal-hd">
+      <h3>新建爬取源</h3>
+      <span class="close-x" onclick="document.getElementById('newSourceModal').classList.remove('show')">✕</span>
+    </div>
+    <div class="modal-bd">
+      <label style="display:block;font-size:13px;color:var(--text-2);margin-bottom:10px">选择源类型</label>
+      <div class="radio-cards" id="typeCards">
+        <div class="radio-card sel" data-t="telegram"><h5>📨 Telegram 频道</h5><p>公共频道消息翻页爬取</p></div>
+        <div class="radio-card" data-t="github"><h5>🐙 GitHub 搜索</h5><p>代码 / Issues 关键词检索</p></div>
+        <div class="radio-card" data-t="gist"><h5>📄 Gist 时间线</h5><p>扫描公开 gist 内容</p></div>
+        <div class="radio-card" data-t="page"><h5>🌐 通用网页</h5><p>指定 URL 列表抓取提取</p></div>
+      </div>
+      <div id="srcForm" style="margin-top:18px"></div>
+    </div>
+    <div class="modal-ft">
+      <span class="test-result" id="srcTestResult" style="display:none;margin-right:auto"></span>
+      <button class="btn" onclick="document.getElementById('newSourceModal').classList.remove('show')">取消</button>
+      <button class="btn" onclick="testSrc(this)">🔌 测试连接</button>
+      <button class="btn primary" onclick="saveSrc()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 导入弹窗 ================= -->
+<div class="modal-mask" id="importModal">
+  <div class="modal narrow">
+    <div class="modal-hd"><h3>导入爬取源</h3><span class="close-x" onclick="document.getElementById('importModal').classList.remove('show')">✕</span></div>
+    <div class="modal-bd">
+      <div class="callout blue">支持两种来源：① 从 <span class="mono">my-config.json</span> 的 crawl 节导入（可选 section: telegram/github/gist/pages/scripts…）；② 粘贴源清单 JSON。</div>
+      <div class="form-item full">
+        <label>导入来源</label>
+        <select class="input"><option>my-config.json · crawl 节</option><option>粘贴的 JSON 文本</option></select>
+      </div>
+      <div class="form-item full">
+        <label>JSON 内容</label>
+        <textarea class="input mono" placeholder='{"telegram": {"channels": {...}}} 或 [{"name": "...", "config": {...}}]'></textarea>
+      </div>
+      <label class="checkbox"><input type="checkbox" checked> 导入前预览差异（同名源合并而非覆盖）</label>
+    </div>
+    <div class="modal-ft">
+      <button class="btn" onclick="document.getElementById('importModal').classList.remove('show')">取消</button>
+      <button class="btn primary" onclick="document.getElementById('importModal').classList.remove('show');alert('原型示意：导入完成 · 新增 3 · 合并 1 · 跳过 0')">导入</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- 源数据 ---------- */
+const SOURCES=[
+  {n:'oneclickvpnkeys',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b> · exclude=<b>""</b>',on:true,c:6,e:0,key:'telegram'},
+  {n:'V2RayV2RayV2Ray',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b> · task.rename=<b>"🚀"</b>',on:true,c:4,e:0,key:'telegram'},
+  {n:'VmessProtocol',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b>',on:true,c:3,e:0,key:'telegram'},
+  {n:'vigility',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b>',on:true,c:2,e:0,key:'telegram'},
+  {n:'theVpnInfo',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b>',on:true,c:0,e:2,key:'telegram',warn:1},
+  {n:'Freenodeshare',t:'telegram',tl:'Telegram 频道',ico:'📨',bg:'#e6f4ff',sum:'pages=<b>5</b>',on:true,c:3,e:0,key:'telegram'},
+  {n:'github-search',t:'github',tl:'GitHub 搜索',ico:'🐙',bg:'#f6ffed',sum:'pages=<b>2</b> · exclude_repos=<b>[]</b> · patterns=<b>[]</b>',on:true,c:15,e:0,key:'github'},
+  {n:'gist-timeline',t:'gist',tl:'Gist 时间线',ico:'📄',bg:'#f6ffed',sum:'max_gists=<b>100</b> · pages=<b>2</b> · max_filesize=<b>64KB</b>',on:true,c:10,e:0,key:'gist'},
+  {n:'free-node-pages',t:'page',tl:'通用网页',ico:'🌐',bg:'#f9f0ff',sum:'url=<b>3 个</b> · paged · placeholder=<b>{page}</b> · 1-5',on:true,c:7,e:0,key:'page'},
+  {n:'scaner-plugin',t:'script',tl:'脚本插件',ico:'🧪',bg:'#fff2f0',sum:'plugin=<b>scaner</b> · persist=<b>scaner-state.json</b>',on:true,c:0,e:3,key:'script',warn:1},
+  {n:'fofa-plugin',t:'script',tl:'脚本插件',ico:'🧪',bg:'#fff2f0',sum:'plugin=<b>fofa</b> · options.email/key',on:false,c:0,e:0,key:'script',warn:1},
+  {n:'v2rayse-plugin',t:'script',tl:'脚本插件',ico:'🧪',bg:'#fff2f0',sum:'plugin=<b>v2rayse</b> · persist 启用',on:true,c:1,e:0,key:'script'},
+];
+let filter='all';
+function renderSources(){
+  const items=SOURCES.filter(s=>filter==='all'||s.key===filter);
+  document.getElementById('srcBody').innerHTML=items.map(s=>`
+    <tr>
+      <td><b>${s.n}</b></td>
+      <td><span class="tag ${s.t==='script'?'err':s.t==='page'?'purple':s.warn?'warn':'info'} plain"><span class="src-type-ico" style="background:${s.bg};width:20px;height:20px;font-size:11px;vertical-align:-4px;margin-right:2px">${s.ico}</span>${s.tl}</span></td>
+      <td class="kv">${s.sum}</td>
+      <td><span class="switch ${s.on?'on':''}" onclick="this.classList.toggle('on')"></span></td>
+      <td><b style="color:${s.c?'var(--success-tx)':'var(--text-3)'}">${s.c}</b> 订阅</td>
+      <td>${s.e?`<span class="tag err">${s.e} 次</span>`:'0'}</td>
+      <td class="acts">
+        <a class="btn link" onclick="testSrcRow(this)">测试连接</a>
+        <a class="btn link" onclick="alert('原型示意：编辑 ${s.n}')">编辑</a>
+        <a class="btn link" onclick="alert('原型示意：查看 ${s.n} 的历史贡献日志')">日志</a>
+        <a class="btn link" style="color:var(--error)" onclick="delSrc('${s.n}')">删除</a>
+      </td>
+    </tr>`).join('')||'<tr><td colspan="7" class="empty-tip">该类型下暂无源</td></tr>';
+}
+function delSrc(n){if(confirm(`确认删除爬取源 ${n}？\n其历史贡献记录将保留。`))alert('原型示意：已删除 '+n)}
+document.querySelectorAll('#srcTabs .tab').forEach(t=>t.addEventListener('click',()=>{
+  document.querySelectorAll('#srcTabs .tab').forEach(x=>x.classList.remove('active'));
+  t.classList.add('active');filter=t.dataset.t;renderSources();
+}));
+/* ---------- 动态表单（按类型渲染字段） ---------- */
+const FORMS={
+  telegram:()=>`<div class="form-grid">
+    <div class="form-item"><label><span class="req">*</span>频道名称</label><input class="input" placeholder="例: oneclickvpnkeys（不带 @）"></div>
+    <div class="form-item"><label>翻页数 <span class="hint">pages</span></label><input class="input" type="number" value="5" min="1"></div>
+    <div class="form-item"><label>包含正则 <span class="hint">include</span></label><input class="input mono bad" value="[unclosed"><div class="err-msg show">请输入合法正则（unterminated character set）</div></div>
+    <div class="form-item"><label>排除正则 <span class="hint">exclude</span></label><input class="input mono" placeholder="留空不限制"></div>
+    <div class="form-item full"><label>来源标签 <span class="hint">归档标记，仅作来源追溯</span></label><input class="input" placeholder="例: telegram-batch-1004"></div>
+  </div>`,
+  github:()=>`<div class="form-grid">
+    <div class="form-item"><label>搜索页数 <span class="hint">pages</span></label><input class="input" type="number" value="2" min="1"></div>
+    <div class="form-item"><label>关键词模式 <span class="hint">patterns · 标签编辑器</span></label><input class="input" placeholder="回车添加，例: subscribe?token="></div>
+    <div class="form-item full"><label>排除仓库 <span class="hint">exclude_repos · 支持正则</span></label><textarea class="input mono" placeholder="每行一条"></textarea></div>
+  </div>`,
+  gist:()=>`<div class="form-grid">
+    <div class="form-item"><label>扫描 gist 上限 <span class="hint">max_gists</span></label><input class="input" type="number" value="100" min="1" max="5000"></div>
+    <div class="form-item"><label>文件大小上限 <span class="hint">max_filesize (KB)</span></label><input class="input" type="number" value="64" min="1"></div>
+    <div class="form-item full"><label>排除作者 <span class="hint">exclude_owners · 标签编辑器</span></label><input class="input" placeholder="回车添加，支持正则"></div>
+  </div>`,
+  page:()=>`<div class="form-item full"><label><span class="req">*</span>URL 列表 <span class="hint">每行一条</span></label>
+    <textarea class="input mono" placeholder="https://example.com/free/node\nhttps://example.com/free/v2ray"></textarea></div>
+    <div class="form-grid">
+      <div class="form-item"><label>分页占位符 <span class="hint">paged + placeholder</span></label><input class="input mono" value="{page}"></div>
+      <div class="form-item"><label>页码范围 <span class="hint">start - end</span></label><div style="display:flex;gap:8px;align-items:center"><input class="input" type="number" value="1" style="width:80px"><span class="muted">—</span><input class="input" type="number" value="5" style="width:80px"><label class="checkbox" style="margin-left:8px"><input type="checkbox" checked> 分页</label></div></div>
+      <div class="form-item full"><label>请求头 <span class="hint">headers · 键值编辑器</span></label>
+        <div style="display:flex;gap:8px;margin-bottom:8px"><input class="input mono" placeholder="Key" style="flex:1"><input class="input mono" placeholder="Value" style="flex:2"><span class="btn sm" style="cursor:pointer">＋</span></div>
+        <div style="display:flex;gap:8px"><input class="input mono" placeholder="Referer" style="flex:1" value="Referer"><input class="input mono" style="flex:2" value="https://example.com"><span class="btn sm" style="cursor:pointer">－</span></div>
+      </div>
+    </div>
+    <div class="callout blue">保存前可点击「测试连接」对首个 URL 做可达性探测（HEAD/GET），展示响应码与耗时。</div>`,
+};
+let curType='telegram';
+function renderForm(){document.getElementById('srcForm').innerHTML=FORMS[curType]();}
+document.querySelectorAll('#typeCards .radio-card').forEach(c=>c.addEventListener('click',()=>{
+  document.querySelectorAll('#typeCards .radio-card').forEach(x=>x.classList.remove('sel'));
+  c.classList.add('sel');curType=c.dataset.t;renderForm();
+  document.getElementById('srcTestResult').style.display='none';
+}));
+document.getElementById('newSourceModal').addEventListener('click',e=>{if(e.target===e.currentTarget)e.currentTarget.classList.remove('show')});
+/* 测试连接子组件 */
+function testSrc(btn){
+  const r=document.getElementById('srcTestResult');
+  r.style.display='inline-flex';r.className='test-result testing';
+  r.innerHTML='<span class="spin" style="border-color:rgba(9,88,217,.3);border-top-color:#0958d9"></span>正在测试…';
+  setTimeout(()=>{
+    const ok=Math.random()>0.25;
+    r.className='test-result '+(ok?'ok':'fail');
+    r.textContent=ok?'HTTP 200 · 186ms · 内容包含 6 个订阅链接':'HTTP 403 · 92ms · 目标拒绝访问（可尝试配置本地代理）';
+  },1200);
+}
+function testSrcRow(btn){
+  const old=btn.textContent;
+  btn.innerHTML='<span class="spin" style="border-color:rgba(22,119,255,.3);border-top-color:#1677ff"></span>测试中';
+  setTimeout(()=>{
+    const ok=Math.random()>0.2;
+    btn.textContent=ok?'✓ 200 ·120ms':'✗ 超时';
+    btn.style.color=ok?'var(--success-tx)':'var(--error-tx)';
+    setTimeout(()=>{btn.textContent=old;btn.style.color='';},2400);
+  },1000);
+}
+function saveSrc(){
+  const bad=document.querySelector('#srcForm .input.bad');
+  alert(bad?'表单存在校验错误（include 正则不合法），请修正后保存':'原型示意：源已保存\n\n保存后立即参与下一次任务；可通过启用开关单独控制是否参与本轮。');
+}
+renderSources();renderForm();
+</script>
+</body>
+</html>
