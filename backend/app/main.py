@@ -16,9 +16,12 @@ from config import settings
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    from engine_adapter.engine import RealEngine
+    from engine_adapter.runner import TaskRunner
     from seed import init_db
 
     init_db()
+    TaskRunner.instance().engine = RealEngine()  # 生产引擎：复用 subscribe/
     yield
 
 
