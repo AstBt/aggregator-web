@@ -16,12 +16,29 @@ from config import settings
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
-    from engine_adapter.engine import RealEngine
-    from engine_adapter.runner import TaskRunner
+    import os
+
+    from engine_adapter.runner import HermeticEngine, TaskRunner
     from seed import init_db
 
     init_db()
-    TaskRunner.instance().engine = RealEngine()  # 生产引擎：复用 subscribe/
+    if os.environ.get("AGG_ENGINE") == "hermetic":
+        # E2E/演示钩子：确定性引擎，避免真实网络依赖
+        TaskRunner.instance().engine = HermeticEngine(
+            subscriptions=[("https://e2e.example.com/link/abc?sub=3", "TELEGRAM", True)],
+            proxies=[
+                {"name": "🚀 香港01", "type": "vless", "server": "hk01.example.com", "port": 443,
+                 "uuid": "e5f3-a91c", "network": "ws", "tls": True, "delay": 180},
+                {"name": "🚀 新加坡02", "type": "vmess", "server": "sg02.example.net", "port": 80,
+                 "uuid": "7b2c-11f0", "alterId": 0, "delay": 460},
+                {"name": "🚀 香港04", "type": "hysteria2", "server": "hk04.example.io", "port": 36712,
+                 "password": "s3cret", "sni": "hk04.example.io", "delay": 167},
+            ],
+        )
+    else:
+        from engine_adapter.engine import RealEngine
+
+        TaskRunner.instance().engine = RealEngine()  # 生产引擎：复用 subscribe/
     yield
 
 
@@ -80,7 +97,17 @@ def create_app() -> FastAPI:
         return {"code": 0, "data": {"status": "up"}, "message": "ok"}
 
     if settings.frontend_dist.is_dir():
-        app.mount("/", StaticFiles(directory=str(settings.frontend_dist), html=True), name="frontend")
+        from fastapi.responses import FileResponse
+
+        index_file = settings.frontend_dist / "index.html"
+
+        @app.get("/{full_path:path}", include_in_schema=False)
+        def spa(full_path: str):  # noqa: ANN001
+            """SPA 托管：静态文件优先，未命中回退 index.html。"""
+            candidate = (settings.frontend_dist / full_path).resolve()
+            if full_path and candidate.is_file() and str(candidate).startswith(str(settings.frontend_dist.resolve())):
+                return FileResponse(candidate)
+            return FileResponse(index_file)
 
     return app
 

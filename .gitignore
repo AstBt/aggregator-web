@@ -141,3 +141,7 @@ config.local.json.playwright-cli/
 # Web 化运行数据（本地数据库/产物/快照）
 data/
 backend/.testdata/
+
+# 前端构建产物与依赖
+frontend/node_modules/
+frontend/dist/
