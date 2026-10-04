@@ -137,3 +137,7 @@ config.yaml
 generate.ini
 config.json
 config.local.json.playwright-cli/
+
+# Web 化运行数据（本地数据库/产物/快照）
+data/
+backend/.testdata/
