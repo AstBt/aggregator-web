@@ -81,4 +81,5 @@ cd frontend && npm test
 - **系统库为旧数据权威源**：订阅池 = 上轮 full/回测存活节点的来源订阅（派生）；remains = 上轮存活节点；full/回测默认合并 remains 重新验活。
 - **存储目标纯发布**：创建任务时绑定写入目标（回测/full 必填）；旧数据只从系统库读；发布准原子——全部目标写成功才置 success，失败记 `publish_pending` 可在详情页「重试发布」补偿。
 - **RBAC**：admin/operator/viewer 三角色服务端强校验；存储目标管理仅 admin。
+- **定时执行**：`engine_adapter/scheduler.py`（APScheduler，lifespan 启动）为每个启用的定时任务注册 cron 作业，到点自动生成 `trigger=schedule` 的 run；执行器占用时跳过本轮并记录原因，下轮恢复。界面通过图形化间隔构建器（分钟/小时/天/周/每天/每周）创建，不暴露 cron 表达式。
 - **引擎复用**：`engine_adapter/engine.py` 把 DB 配置合成为 `CrawlConfig`，直接调用 `subscribe/` 的 `crawl.engine.run` / `workflow.executewrapper` / `pipeline.check_alive_proxies` / `subconverter`。
