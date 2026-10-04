@@ -112,6 +112,9 @@ env.bak/
 venv.bak/
 .vscode/
 
+# playwright-cli 调试产物（任意层级目录下的 .playwright-cli/ 均忽略）
+.playwright-cli/
+
 # Spyder project settings
 .spyderproject
 .spyproject
