@@ -1,0 +1,236 @@
+# -*- coding: utf-8 -*-
+"""任务执行器测试（FR-4.1~4.10, A8~A11/A16）。"""
+
+from __future__ import annotations
+
+import time
+
+import pytest
+
+from conftest import auth_header
+
+
+@pytest.fixture()
+def operator_token(client, admin_token) -> str:
+    client.post(
+        "/api/users",
+        json={"username": "operator1", "password": "pass1234", "role": "operator"},
+        headers=auth_header(admin_token),
+    )
+    return client.post(
+        "/api/auth/login", json={"username": "operator1", "password": "pass1234"}
+    ).json()["data"]["accessToken"]
+
+
+@pytest.fixture()
+def fake_engine():
+    """注入测试引擎：无网络、确定性产出。"""
+    from engine_adapter import runner as runner_module
+
+    engine = runner_module.HermeticEngine(
+        subscriptions=[("https://sub.example.com/a", "PAGE", True)],
+        proxies=[
+            {"name": "🚀 测试01", "type": "vless", "server": "hk01.example.com", "port": 443, "delay": 120},
+            {"name": "🚀 测试02", "type": "vmess", "server": "sg02.example.com", "port": 80, "delay": 460},
+            {"name": "🚀 测试03", "type": "hysteria2", "server": "hk04.example.com", "port": 36712, "delay": 190},
+        ],
+    )
+    previous = runner_module.TaskRunner.instance().engine
+    runner_module.TaskRunner.instance().engine = engine
+    yield engine
+    runner_module.TaskRunner.instance().engine = previous
+
+
+def _wait_run(client, token, run_id, timeout=20):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        data = client.get(f"/api/tasks/{run_id}", headers=auth_header(token)).json()["data"]
+        if data["status"] in ("success", "failed", "cancelled", "partial-success"):
+            return data
+        time.sleep(0.2)
+    raise AssertionError("run 未在超时前结束")
+
+
+class TestCreateTask:
+    def test_crawl_only_requires_no_binding(self, client, operator_token, fake_engine):
+        resp = client.post(
+            "/api/tasks",
+            json={"mode": "crawl", "params": {"num_threads": 8}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 201, resp.text
+        assert resp.json()["data"]["mode"] == "crawl"
+        assert resp.json()["data"]["status"] == "pending"
+
+    def test_full_requires_binding(self, client, operator_token, fake_engine):
+        resp = client.post("/api/tasks", json={"mode": "full"}, headers=auth_header(operator_token))
+        assert resp.status_code == 400
+        assert "绑定" in resp.json()["message"]
+
+    def test_aggregate_requires_binding(self, client, operator_token, fake_engine):
+        resp = client.post("/api/tasks", json={"mode": "aggregate"}, headers=auth_header(operator_token))
+        assert resp.status_code == 400
+
+    def test_binding_disabled_target_rejected(self, client, operator_token, fake_engine, db_session):
+        from models import StorageTarget
+
+        target = db_session.query(StorageTarget).filter_by(name="data-local").first()
+        target.enable = False
+        db_session.commit()
+        resp = client.post(
+            "/api/tasks",
+            json={"mode": "full", "bind_target_ids": [target.id]},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 400
+
+    def test_viewer_cannot_create(self, client, admin_token, fake_engine):
+        client.post(
+            "/api/users",
+            json={"username": "viewer3", "password": "pass1234", "role": "viewer"},
+            headers=auth_header(admin_token),
+        )
+        viewer = client.post(
+            "/api/auth/login", json={"username": "viewer3", "password": "pass1234"}
+        ).json()["data"]["accessToken"]
+        assert client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(viewer)).status_code == 403
+
+
+class TestRunLifecycle:
+    def test_crawl_run_completes_with_stats(self, client, operator_token, fake_engine):
+        run_id = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        data = _wait_run(client, operator_token, run_id)
+        assert data["status"] == "success"
+        assert data["stats"]["subs_alive"] == 1
+        assert data["stage"] == "done"
+
+    def test_full_run_publishes_to_bound_targets(self, client, operator_token, fake_engine, db_session, tmp_path):
+        from models import StorageTarget
+
+        target = db_session.query(StorageTarget).filter_by(name="data-local").first()
+        target.config = {"dir": str(tmp_path / "local"), "keep": 5}
+        db_session.commit()
+        run_id = client.post(
+            "/api/tasks",
+            json={"mode": "full", "bind_target_ids": [target.id]},
+            headers=auth_header(operator_token),
+        ).json()["data"]["id"]
+        data = _wait_run(client, operator_token, run_id)
+        assert data["status"] == "success"
+        assert data["stats"]["nodes_alive"] == 3
+        written = list((tmp_path / "local").glob("*"))
+        assert written, "绑定目标应收到产物"
+
+    def test_aggregate_reads_pool_from_system_db(self, client, operator_token, fake_engine, db_session):
+        """回测：旧订阅池/remains 来自系统库（v2.3 决策）。"""
+        from models import Node, RunLog, Subscription
+
+        # 预置上轮存活订阅与节点
+        db_session.add(Subscription(url="https://old.example.com/pool", origin="PAGE", status="alive"))
+        prev = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        run = _wait_run(client, operator_token, prev)
+        # 回测任务
+        target = db_session.query(StorageTarget := __import__("models").StorageTarget).filter_by(name="data-local").first()
+        run_id = client.post(
+            "/api/tasks",
+            json={"mode": "aggregate", "bind_target_ids": [target.id]},
+            headers=auth_header(operator_token),
+        ).json()["data"]["id"]
+        data = _wait_run(client, operator_token, run_id)
+        logs = [
+            row.message
+            for row in db_session.query(RunLog).filter_by(run_id=run_id).all()
+        ]
+        assert any("系统库" in m for m in logs), logs
+
+    def test_global_mutex_409(self, client, operator_token, fake_engine):
+        """全局单实例：任何模式互斥（含回测在跑，FR-4.4）。"""
+        from engine_adapter import runner as runner_module
+
+        class SlowEngine(runner_module.HermeticEngine):
+            def crawl(self, ctx):
+                import time as _t
+
+                for _ in range(30):
+                    ctx.check_cancelled()
+                    _t.sleep(0.1)
+                return super().crawl(ctx)
+
+        runner = runner_module.TaskRunner.instance()
+        runner.engine = SlowEngine(subscriptions=[], proxies=[])
+        try:
+            run_id = client.post(
+                "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+            ).json()["data"]["id"]
+            resp = client.post(
+                "/api/tasks",
+                json={"mode": "aggregate", "bind_target_ids": [1]},
+                headers=auth_header(operator_token),
+            )
+            assert resp.status_code == 409
+            assert "正在运行" in resp.json()["message"]
+        finally:
+            client.post(f"/api/tasks/{run_id}/cancel", headers=auth_header(operator_token))
+
+
+class TestCancelAndLogs:
+    def test_cancel_marks_cancelled(self, client, operator_token):
+        from engine_adapter import runner as runner_module
+
+        class HoldEngine(runner_module.HermeticEngine):
+            def crawl(self, ctx):
+                import time as _t
+
+                for _ in range(50):
+                    if ctx.cancelled:
+                        raise runner_module.RunCancelled()
+                    _t.sleep(0.1)
+                return super().crawl(ctx)
+
+        previous = runner_module.TaskRunner.instance().engine
+        runner_module.TaskRunner.instance().engine = HoldEngine(subscriptions=[], proxies=[])
+        run_id = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        time.sleep(0.5)
+        resp = client.post(f"/api/tasks/{run_id}/cancel", headers=auth_header(operator_token))
+        assert resp.status_code == 200
+        data = _wait_run(client, operator_token, run_id)
+        assert data["status"] == "cancelled"
+        runner_module.TaskRunner.instance().engine = previous
+
+    def test_logs_incremental(self, client, operator_token, fake_engine):
+        run_id = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        _wait_run(client, operator_token, run_id)
+        first = client.get(f"/api/tasks/{run_id}/logs", headers=auth_header(operator_token)).json()["data"]
+        assert first["items"], "应有日志"
+        assert first["items"][0]["id"]
+        cursor = first["items"][0]["id"]
+        second = client.get(
+            f"/api/tasks/{run_id}/logs?since={cursor}", headers=auth_header(operator_token)
+        ).json()["data"]
+        assert all(item["id"] > cursor for item in second["items"])
+
+
+class TestSchedulerTranslation:
+    def test_six_interval_kinds_to_cron(self):
+        from services import scheduler_service
+
+        assert scheduler_service.to_cron("minute", n=30) == "*/30 * * * *"
+        assert scheduler_service.to_cron("hour", n=6) == "0 */6 * * *"
+        assert scheduler_service.to_cron("daily", time="09:00") == "0 9 * * *"
+        assert scheduler_service.to_cron("weekly", weekdays=[1], time="09:00") == "0 9 * * 1"
+        assert scheduler_service.to_cron("day", n=3, time="11:05") == "5 11 */3 * *"
+        assert scheduler_service.to_cron("week", n=2, weekdays=[6]) == "0 0 * * 6"
+
+    def test_human_readable(self):
+        from services import scheduler_service
+
+        assert scheduler_service.describe("minute", n=30) == "每 30 分钟"
+        assert scheduler_service.describe("daily", time="11:05") == "每天 11:05"
