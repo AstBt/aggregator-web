@@ -26,7 +26,7 @@
         <h3>节点列表</h3>
         <div style="display:flex;gap:8px">
           <a-button size="small" @click="downloadCsv('nodes')">⤓ CSV</a-button>
-          <a-button size="small" type="primary" @click="exportOpen = true">⤒ 导出客户端配置</a-button>
+          <a-button size="small" type="primary" @click="exportOpen = true; loadExportHistory()">⤒ 导出客户端配置</a-button>
         </div>
       </div>
       <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:16px">
@@ -101,6 +101,20 @@
         <a-checkbox v-model:checked="exportForm.only_alive">仅存活</a-checkbox>
       </div>
       <div class="sched-preview" style="margin-top:12px">预计节点 {{ total }} 个 · 服务端实时转换 · 文件格式 {{ ext }}</div>
+      <div class="section-title" style="margin-top:18px">导出历史（最近 {{ exportHistory.length }} 次）</div>
+      <table class="tbl" v-if="exportHistory.length">
+        <thead><tr><th>类型</th><th>文件</th><th>节点数</th><th>大小</th><th>时间</th></tr></thead>
+        <tbody>
+          <tr v-for="e in exportHistory" :key="e.id">
+            <td>{{ e.target === 'v2ray' ? 'V2Ray (mixed)' : e.target }}</td>
+            <td class="mono">{{ e.filename }}</td>
+            <td>{{ e.count }}</td>
+            <td>{{ (e.size / 1024).toFixed(1) }} KB</td>
+            <td class="muted">{{ e.created_at?.replace('T', ' ').slice(0, 16) }}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div v-else class="muted" style="font-size:12.5px">暂无导出记录</div>
     </a-modal>
   </div>
 </template>
@@ -109,7 +123,7 @@
 import { computed, onMounted, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 
-import { dashboard as dashboardApi, results as resultsApi, tasks as tasksApi } from '../api';
+import { dashboard as dashboardApi, exports as exportsApi, results as resultsApi, tasks as tasksApi } from '../api';
 
 const rows = ref([]);
 const total = ref(0);
@@ -121,6 +135,7 @@ const stats = reactive({ alive: 0, avg: 0, residential: 0 });
 const filters = reactive({ protocol: undefined, region: undefined, alive: undefined, residential: undefined, delayBand: undefined, keyword: '' });
 const exportOpen = ref(false);
 const exporting = ref(false);
+const exportHistory = ref([]);
 const exportForm = reactive({ target: 'clash', only_alive: true });
 
 const targetIcon = (t) => ({ clash: '📕', v2ray: '📗', singbox: '📘' }[t] || '📄');
@@ -153,6 +168,9 @@ function download(a) {
   const url = `/api/tasks/${runId.value}/artifacts`;
   fetch(url).then(() => message.info('演示环境：请从服务端数据目录获取文件'));
 }
+async function loadExportHistory() {
+  exportHistory.value = (await exportsApi.list(10)).items;
+}
 async function onExport() {
   exporting.value = true;
   try {
@@ -163,6 +181,7 @@ async function onExport() {
     a.href = url; a.download = data.filename; a.click();
     URL.revokeObjectURL(url);
     message.success(`已导出 ${data.count} 个节点（${data.filename}）`);
+    await loadExportHistory();
     exportOpen.value = false;
   } catch (error) {
     message.error(error.message);

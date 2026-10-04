@@ -50,6 +50,18 @@ export const tasks = {
   artifacts: (id) => http.get(`/tasks/${id}/artifacts`),
 };
 
+export const schedules = {
+  list: () => http.get('/schedules'),
+  create: (data) => http.post('/schedules', data),
+  update: (id, data) => http.put(`/schedules/${id}`, data),
+  remove: (id) => http.delete(`/schedules/${id}`),
+  toggle: (id) => http.post(`/schedules/${id}/toggle`),
+};
+
+export const exports = {
+  list: (limit = 10) => http.get('/exports', { params: { limit } }),
+};
+
 export const results = {
   subscriptions: (params) => http.get('/subscriptions', { params }),
   subscription: (id) => http.get(`/subscriptions/${id}`),

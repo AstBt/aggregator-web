@@ -176,3 +176,37 @@ class TestCsvExport:
         resp = client.get("/api/export/nodes.csv", headers=auth_header(operator_token))
         assert resp.status_code == 200
         assert "🚀 香港01" in resp.text and "protocol" in resp.text
+
+
+class TestExportHistory:
+    def test_export_records_history(self, client, operator_token, seeded_run):
+        """FR-5.6：导出写入历史记录（类型/节点数/大小/时间）。"""
+        await_export = client.post(
+            "/api/nodes/export",
+            json={"target": "clash", "only_alive": True},
+            headers=auth_header(operator_token),
+        )
+        assert await_export.status_code == 200
+        history = client.get("/api/exports", headers=auth_header(operator_token)).json()["data"]
+        assert history["total"] >= 1
+        latest = history["items"][0]
+        assert latest["target"] == "clash" and latest["count"] == 4
+        assert latest["filename"].endswith(".yaml")
+
+    def test_history_latest_first_and_limited(self, client, operator_token, seeded_run):
+        for _ in range(3):
+            client.post(
+                "/api/nodes/export", json={"target": "v2ray"}, headers=auth_header(operator_token)
+            )
+        history = client.get("/api/exports", headers=auth_header(operator_token)).json()["data"]
+        assert [i["target"] for i in history["items"][:3]] == ["v2ray", "v2ray", "v2ray"]
+        assert history["items"][0]["id"] > history["items"][1]["id"]
+
+    def test_failed_export_not_recorded(self, client, operator_token, seeded_run):
+        from models import Setting
+
+        client.post(
+            "/api/nodes/export", json={"target": "surge"}, headers=auth_header(operator_token)
+        )
+        history = client.get("/api/exports", headers=auth_header(operator_token)).json()["data"]
+        assert history["total"] == 0

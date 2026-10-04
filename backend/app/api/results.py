@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from db import get_db
 from deps import require_role
-from models import Node, Subscription, User
+from models import ExportLog, Node, Subscription, User
 from services import export_service
 
 router = APIRouter(tags=["results"])
@@ -162,10 +162,10 @@ class ExportIn(BaseModel):
 @router.post("/api/nodes/export")
 def export_nodes(
     body: ExportIn,
-    _: User = Depends(require_role("viewer")),
+    user: User = Depends(require_role("viewer")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """按客户端类型导出（FR-5.5）：默认仅存活节点。"""
+    """按客户端类型导出（FR-5.5）：默认仅存活节点；成功写入导出历史（FR-5.6）。"""
     if body.target not in export_service.TARGETS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"不支持的客户端类型: {body.target}")
     stmt = select(Node)
@@ -186,11 +186,41 @@ def export_nodes(
         content = export_service.build(body.target, nodes)
     except ValueError as exc:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    filename = {"clash": "clash.yaml", "v2ray": "v2ray.txt", "singbox": "singbox.json"}[body.target]
+    db.add(
+        ExportLog(
+            target=body.target,
+            filename=filename,
+            count=len(nodes),
+            size=len(content.encode("utf-8")),
+            actor_id=user.id,
+        )
+    )
+    db.commit()
+    return {"target": body.target, "count": len(nodes), "content": content, "filename": filename}
+
+
+@router.get("/api/exports")
+def list_exports(
+    limit: int = Query(10, ge=1, le=50),
+    _: User = Depends(require_role("viewer")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """导出历史（FR-5.6）：最近 N 次，倒序。"""
+    rows = db.scalars(select(ExportLog).order_by(ExportLog.id.desc()).limit(limit)).all()
     return {
-        "target": body.target,
-        "count": len(nodes),
-        "content": content,
-        "filename": export_service.TARGETS and {"clash": "clash.yaml", "v2ray": "v2ray.txt", "singbox": "singbox.json"}[body.target],
+        "total": len(rows),
+        "items": [
+            {
+                "id": r.id,
+                "target": r.target,
+                "filename": r.filename,
+                "count": r.count,
+                "size": r.size,
+                "created_at": r.created_at.isoformat() if r.created_at else None,
+            }
+            for r in rows
+        ],
     }
 
 

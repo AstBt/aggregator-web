@@ -92,7 +92,7 @@
   </div>
 
   <!-- ============ 创建任务弹窗 ============ -->
-  <a-modal v-model:open="createOpen" title="创建任务" width="880px" @ok="submit" ok-text="创建任务" :confirm-loading="submitting">
+  <a-modal v-model:open="createOpen" :title="editingSchedule ? '编辑定时任务' : scheduled ? '创建定时任务' : '创建任务'" width="880px" @ok="submit" :ok-text="editingSchedule ? '保存' : scheduled ? '创建定时任务' : '创建任务'" :confirm-loading="submitting">
     <div class="section-title">运行模式</div>
     <div class="radio-cards c3">
       <div class="radio-card" :class="{ sel: draft.mode === 'crawl' }" @click="draft.mode = 'crawl'">
@@ -185,13 +185,47 @@
       <div class="sched-preview">⏰ {{ schedPreview }}</div>
     </div>
   </a-modal>
+
+  <!-- ============ 定时任务管理 ============ -->
+  <section class="card" style="margin-top:16px">
+    <div class="card-hd">
+      <h3>定时任务</h3>
+      <a-button type="primary" size="small" @click="openSchedule">＋ 新建定时</a-button>
+    </div>
+    <div class="callout gray" style="margin-bottom:14px">
+      在创建任务弹窗选择「定时执行」即保存为定时任务（不立即产生 run）；到期由系统自动生成执行记录。周期为人类可读的间隔描述，无需填写 cron 表达式。
+      <span v-if="scheduleRows.some((s) => s.disabled_reason)" style="color:var(--warning-tx)">
+        有任务因执行器占用被跳过，将在下一周期恢复。
+      </span>
+    </div>
+    <div class="tbl-wrap">
+      <table class="tbl">
+        <thead><tr><th>名称</th><th>周期</th><th>模式</th><th>绑定目标</th><th>启用</th><th>最近执行</th><th style="width:150px">操作</th></tr></thead>
+        <tbody>
+          <tr v-for="s in scheduleRows" :key="s.id">
+            <td><b>{{ s.name }}</b><span v-if="s.disabled_reason" class="tag warn plain" style="margin-left:6px;font-size:10px">本轮跳过</span></td>
+            <td>{{ schedDescribe(s.params?.spec) || s.cron }}</td>
+            <td>{{ modeLabel(s.mode) }}</td>
+            <td class="mono" style="font-size:11.5px">{{ (s.params?.bind_target_ids || []).map((id) => targets.find((t) => t.id === id)?.name || id).join(' + ') || '—（不绑定）' }}</td>
+            <td><span class="switch" :class="{ on: s.enable }" @click="onToggleSchedule(s)"></span></td>
+            <td class="muted">{{ fmtTime(s.last_run_at) }}</td>
+            <td class="acts">
+              <a class="btn link" @click="editSchedule(s)">编辑</a>
+              <a class="btn link" style="color:var(--error)" @click="onRemoveSchedule(s)">删除</a>
+            </td>
+          </tr>
+          <tr v-if="!scheduleRows.length"><td colspan="7" class="empty-tip">暂无定时任务</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 </template>
 
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue';
 import { Modal, message } from 'ant-design-vue';
 
-import { params as paramsApi, results as resultsApi, storage as storageApi, tasks as tasksApi } from '../api';
+import { params as paramsApi, results as resultsApi, schedules as schedulesApi, storage as storageApi, tasks as tasksApi } from '../api';
 
 const MODE = { crawl: '仅爬取', aggregate: '回测', full: '爬取+聚合' };
 const STATUS = { running: '运行中', success: '成功', failed: '失败', cancelled: '已取消', 'partial-success': '部分发布', pending: '等待中' };
@@ -229,6 +263,8 @@ const bound = ref({});
 const createOpen = ref(false);
 const submitting = ref(false);
 const scheduled = ref(false);
+const scheduleRows = ref([]);
+const editingSchedule = ref(null);
 const sched = reactive({ kind: 'minute', n: 30, time: '09:00', weekdays: [1] });
 const draft = reactive({ mode: 'full', num_threads: 64, max_delay: 5000, timeout: 5000 });
 
@@ -389,13 +425,66 @@ function triggerDownload(url, filename) {
 }
 
 async function openCreate() {
-  const [alive, tgts, srcs] = await Promise.all([paramsApi.readAlive(), storageApi.list(), resultsApi.nodes({ page_size: 1 })]);
-  Object.assign(draft, { num_threads: alive.num_threads ?? 64, max_delay: alive.max_delay ?? 5000, timeout: alive.timeout ?? 5000, mode: 'full' });
+  await prepareDraft();
+  scheduled.value = false;
+  editingSchedule.value = null;
+  Object.assign(draft, { mode: 'full' });
+  createOpen.value = true;
+}
+async function openSchedule() {
+  await prepareDraft();
+  scheduled.value = true;
+  editingSchedule.value = null;
+  Object.assign(draft, { mode: 'full' });
+  Object.assign(sched, { kind: 'minute', n: 30, time: '09:00', weekdays: [1] });
+  createOpen.value = true;
+}
+async function editSchedule(item) {
+  await prepareDraft();
+  scheduled.value = true;
+  editingSchedule.value = item;
+  const spec = item.params?.spec || {};
+  const mode = ({ crawl: 'crawl', aggregate: 'aggregate', full: 'full' })[item.mode] || 'full';
+  Object.assign(draft, { mode, num_threads: item.params?.num_threads ?? 64, max_delay: item.params?.max_delay ?? 5000, timeout: item.params?.timeout ?? 5000 });
+  Object.assign(sched, { kind: spec.kind || 'minute', n: spec.n ?? 30, time: spec.time || '09:00', weekdays: spec.weekdays || [1] });
+  bound.value = Object.fromEntries((item.params?.bind_target_ids || []).map((id) => [id, true]));
+  createOpen.value = true;
+}
+async function prepareDraft() {
+  const [alive, tgts] = await Promise.all([paramsApi.readAlive(), storageApi.list()]);
+  Object.assign(draft, { num_threads: alive.num_threads ?? 64, max_delay: alive.max_delay ?? 5000, timeout: alive.timeout ?? 5000 });
   targets.value = tgts.items;
   sourceRows.value = (await (await import('../api')).sources.list({ page_size: 200 })).items;
   sourceSel.value = Object.fromEntries(sourceRows.value.filter((s) => s.enable).map((s) => [s.id, true]));
   bound.value = Object.fromEntries(tgts.items.filter((t) => t.enable).slice(0, 1).map((t) => [t.id, true]));
-  createOpen.value = true;
+}
+async function loadSchedules() {
+  scheduleRows.value = (await schedulesApi.list()).items;
+}
+const schedDescribe = (spec) => {
+  if (!spec) return '';
+  const wd = (spec.weekdays || []).map((d) => '周' + ['一', '二', '三', '四', '五', '六', '日'][d - 1]).join('');
+  const N = Math.max(1, spec.n ?? 1);
+  const T = spec.time || '00:00';
+  if (spec.kind === 'minute') return `每 ${N} 分钟`;
+  if (spec.kind === 'hour') return `每 ${N} 小时`;
+  if (spec.kind === 'day') return `每 ${N} 天的 ${T}`;
+  if (spec.kind === 'week') return `每 ${N} 周的${wd}`;
+  if (spec.kind === 'daily') return `每天 ${T}`;
+  if (spec.kind === 'weekly') return `每周${wd}的 ${T}`;
+  return spec.kind;
+};
+async function onToggleSchedule(s) {
+  await schedulesApi.toggle(s.id);
+  await loadSchedules();
+}
+async function onRemoveSchedule(s) {
+  Modal.confirm({
+    title: `确认删除定时任务 ${s.name}？`,
+    content: '删除后不再自动执行，历史 run 记录保留。',
+    okType: 'danger',
+    onOk: async () => { await schedulesApi.remove(s.id); message.success('已删除'); await loadSchedules(); },
+  });
 }
 async function submit() {
   if (draft.mode !== 'crawl') {
@@ -405,13 +494,28 @@ async function submit() {
   }
   const payload = { mode: draft.mode, params: { num_threads: draft.num_threads, max_delay: draft.max_delay, timeout: draft.timeout }, bind_target_ids: draft.bind_target_ids || [] };
   if (draft.mode !== 'aggregate') payload.source_ids = Object.entries(sourceSel.value).filter(([, v]) => v).map(([k]) => Number(k));
-  if (scheduled.value) payload.schedule = { kind: sched.kind, n: sched.n, time: sched.time, weekdays: sched.weekdays };
   try {
     submitting.value = true;
-    await tasksApi.create(payload);
-    message.success(scheduled.value ? '定时任务已创建' : '任务已创建');
-    createOpen.value = false;
-    await loadList();
+    if (scheduled.value) {
+      const spec = { kind: sched.kind, n: sched.n, time: sched.time, weekdays: sched.weekdays };
+      const body = {
+        name: editingSchedule.value?.name || `定时-${draft.mode === 'full' ? '爬取+聚合' : modeLabel(draft.mode)}`,
+        kind: spec.kind, n: spec.n, time: spec.time, weekdays: spec.weekdays,
+        mode: draft.mode,
+        params: { num_threads: draft.num_threads, max_delay: draft.max_delay, timeout: draft.timeout, spec },
+        bind_target_ids: draft.bind_target_ids || [],
+      };
+      if (editingSchedule.value) await schedulesApi.update(editingSchedule.value.id, body);
+      else await schedulesApi.create(body);
+      message.success(editingSchedule.value ? '定时任务已更新' : '定时任务已创建（到期自动执行）');
+      createOpen.value = false;
+      await loadSchedules();
+    } else {
+      await tasksApi.create(payload);
+      message.success('任务已创建');
+      createOpen.value = false;
+      await loadList();
+    }
   } catch (error) {
     message.error(error.message);
   } finally {
@@ -419,6 +523,6 @@ async function submit() {
   }
 }
 
-onMounted(loadList);
+onMounted(() => { loadList(); loadSchedules(); });
 onBeforeUnmount(() => clearInterval(logTimer));
 </script>

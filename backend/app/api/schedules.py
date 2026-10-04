@@ -94,6 +94,7 @@ def create_schedule(
     cron = _translate(body.kind, body.n, body.time, body.weekdays)
     bound = _check_binding(body.mode, body.bind_target_ids, db)
     params = dict(body.params or {})
+    params["spec"] = {"kind": body.kind, "n": body.n, "time": body.time, "weekdays": body.weekdays}
     if bound:
         params["bind_target_ids"] = bound
     schedule = Schedule(
@@ -124,12 +125,15 @@ def update_schedule(
         raise HTTPException(status.HTTP_404_NOT_FOUND, "定时任务不存在")
     mode = body.mode or schedule.mode
     if body.kind is not None or body.n is not None or body.time is not None or body.weekdays is not None:
-        schedule.cron = _translate(
-            body.kind or "minute",
-            body.n if body.n is not None else 1,
-            body.time or "00:00",
-            body.weekdays or [1],
-        )
+        spec = dict((schedule.params or {}).get("spec") or {})
+        spec.update({
+            "kind": body.kind or spec.get("kind") or "minute",
+            "n": body.n if body.n is not None else spec.get("n", 1),
+            "time": body.time or spec.get("time") or "00:00",
+            "weekdays": body.weekdays or spec.get("weekdays") or [1],
+        })
+        schedule.cron = _translate(spec["kind"], spec["n"], spec["time"], spec["weekdays"])
+        params["spec"] = spec
     if body.name is not None:
         schedule.name = body.name
     schedule.mode = mode

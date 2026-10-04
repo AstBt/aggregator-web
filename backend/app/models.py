@@ -187,3 +187,17 @@ class Setting(Base):
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[dict] = mapped_column(JSON, default=dict)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=_now, onupdate=_now)
+
+
+class ExportLog(Base):
+    """导出历史（FR-5.6）。"""
+
+    __tablename__ = "export_logs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    target: Mapped[str] = mapped_column(String(16))
+    filename: Mapped[str] = mapped_column(String(64))
+    count: Mapped[int] = mapped_column(Integer, default=0)
+    size: Mapped[int] = mapped_column(Integer, default=0)
+    actor_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
