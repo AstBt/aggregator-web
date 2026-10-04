@@ -61,13 +61,15 @@ def create_app() -> FastAPI:
             )
         return response
 
-    from api import auth, params, sources, tasks, users
+    from api import auth, params, results, sources, storage, tasks, users
 
     app.include_router(auth.router)
     app.include_router(users.router)
     app.include_router(sources.router)
     app.include_router(params.router)
     app.include_router(tasks.router)
+    app.include_router(results.router)
+    app.include_router(storage.router)
 
     @app.get("/api/health")
     def health() -> dict:
