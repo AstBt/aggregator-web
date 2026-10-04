@@ -62,3 +62,50 @@ class UserListItem(BaseModel):
 class Page(BaseModel):
     total: int
     items: list
+
+
+# ---------- 爬取源 ----------
+class SourceCreate(BaseModel):
+    type: str
+    name: str = Field(min_length=1, max_length=128)
+    config: dict = {}
+
+
+class SourceUpdate(BaseModel):
+    config: dict | None = None
+    enable: bool | None = None
+
+
+class SourceItem(BaseModel):
+    id: int
+    type: str
+    name: str
+    enable: bool
+    config: dict
+
+    model_config = {"from_attributes": True}
+
+
+class SourceToggle(BaseModel):
+    enable: bool
+
+
+# ---------- 参数 ----------
+class CrawlParamsPatch(BaseModel):
+    exclude: str | None = None
+    include: str | None = None
+    exclude_task: str | None = None
+    max_fails: int | None = None
+    include_nodes: bool | None = None
+    proxy: dict | None = None
+
+
+class AliveParamsPatch(BaseModel):
+    timeout: int | None = None
+    max_delay: int | None = None
+    num_threads: int | None = None
+    retry: int | None = None
+    test_urls: list[str] | None = None
+    primary_test_url: str | None = None
+    keep_published_on_controller_error: bool | None = None
+    regularize: bool | None = None
