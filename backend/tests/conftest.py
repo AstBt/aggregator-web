@@ -87,3 +87,16 @@ def admin_token(client) -> str:
 
 def auth_header(token: str) -> dict[str, str]:
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture()
+def operator_token(client, admin_token) -> str:
+    """共享的 operator 账号令牌（原各测试文件重复定义，收敛至 conftest）。"""
+    client.post(
+        "/api/users",
+        json={"username": "operator1", "password": "pass1234", "role": "operator"},
+        headers=auth_header(admin_token),
+    )
+    return client.post(
+        "/api/auth/login", json={"username": "operator1", "password": "pass1234"}
+    ).json()["data"]["accessToken"]

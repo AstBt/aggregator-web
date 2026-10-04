@@ -12,18 +12,6 @@ from conftest import auth_header
 
 
 @pytest.fixture()
-def operator_token(client, admin_token) -> str:
-    client.post(
-        "/api/users",
-        json={"username": "operator1", "password": "pass1234", "role": "operator"},
-        headers=auth_header(admin_token),
-    )
-    return client.post(
-        "/api/auth/login", json={"username": "operator1", "password": "pass1234"}
-    ).json()["data"]["accessToken"]
-
-
-@pytest.fixture()
 def seeded_run(client, admin_token, operator_token, db_session, tmp_path):
     """直接播种一轮 full 运行数据（节点/订阅/产物），绕过引擎。"""
     from datetime import datetime

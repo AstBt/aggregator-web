@@ -8,18 +8,6 @@ import pytest
 from conftest import auth_header
 
 
-@pytest.fixture()
-def operator_token(client, admin_token) -> str:
-    client.post(
-        "/api/users",
-        json={"username": "operator1", "password": "pass1234", "role": "operator"},
-        headers=auth_header(admin_token),
-    )
-    return client.post(
-        "/api/auth/login", json={"username": "operator1", "password": "pass1234"}
-    ).json()["data"]["accessToken"]
-
-
 class TestCrawlParams:
     def test_defaults_and_update(self, client, operator_token):
         resp = client.get("/api/settings/crawl", headers=auth_header(operator_token))
