@@ -19,9 +19,11 @@ async def lifespan(_: FastAPI):
     import os
 
     from engine_adapter.runner import HermeticEngine, TaskRunner
+    from engine_adapter.scheduler import SchedulerHub
     from seed import init_db
 
     init_db()
+    SchedulerHub.instance().start()  # FR-4.8：APScheduler 到点为启用 schedule 生成 run
     if os.environ.get("AGG_ENGINE") == "hermetic":
         # E2E/演示钩子：确定性引擎，避免真实网络依赖
         TaskRunner.instance().engine = HermeticEngine(
@@ -40,6 +42,7 @@ async def lifespan(_: FastAPI):
 
         TaskRunner.instance().engine = RealEngine()  # 生产引擎：复用 subscribe/
     yield
+    SchedulerHub.instance().stop()
 
 
 def create_app() -> FastAPI:
@@ -81,7 +84,7 @@ def create_app() -> FastAPI:
             )
         return response
 
-    from api import auth, dashboard, params, results, sources, storage, tasks, users
+    from api import auth, dashboard, params, results, schedules, sources, storage, tasks, users
 
     app.include_router(auth.router)
     app.include_router(users.router)
@@ -90,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(tasks.router)
     app.include_router(results.router)
     app.include_router(storage.router)
+    app.include_router(schedules.router)
     app.include_router(dashboard.router)
 
     @app.get("/api/health")

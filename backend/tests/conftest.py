@@ -100,3 +100,22 @@ def operator_token(client, admin_token) -> str:
     return client.post(
         "/api/auth/login", json={"username": "operator1", "password": "pass1234"}
     ).json()["data"]["accessToken"]
+
+
+@pytest.fixture()
+def fake_engine():
+    """注入确定性测试引擎（HermeticEngine）：无网络、产出可预期。"""
+    from engine_adapter import runner as runner_module
+
+    engine = runner_module.HermeticEngine(
+        subscriptions=[("https://sub.example.com/a", "PAGE", True)],
+        proxies=[
+            {"name": "🚀 测试01", "type": "vless", "server": "hk01.example.com", "port": 443, "delay": 120},
+            {"name": "🚀 测试02", "type": "vmess", "server": "sg02.example.net", "port": 80, "delay": 460},
+            {"name": "🚀 测试03", "type": "hysteria2", "server": "hk04.example.com", "port": 36712, "delay": 190},
+        ],
+    )
+    previous = runner_module.TaskRunner.instance().engine
+    runner_module.TaskRunner.instance().engine = engine
+    yield engine
+    runner_module.TaskRunner.instance().engine = previous

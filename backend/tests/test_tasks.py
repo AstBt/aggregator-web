@@ -10,23 +10,6 @@ import pytest
 from conftest import auth_header
 
 
-@pytest.fixture()
-def fake_engine():
-    """注入测试引擎：无网络、确定性产出。"""
-    from engine_adapter import runner as runner_module
-
-    engine = runner_module.HermeticEngine(
-        subscriptions=[("https://sub.example.com/a", "PAGE", True)],
-        proxies=[
-            {"name": "🚀 测试01", "type": "vless", "server": "hk01.example.com", "port": 443, "delay": 120},
-            {"name": "🚀 测试02", "type": "vmess", "server": "sg02.example.com", "port": 80, "delay": 460},
-            {"name": "🚀 测试03", "type": "hysteria2", "server": "hk04.example.com", "port": 36712, "delay": 190},
-        ],
-    )
-    previous = runner_module.TaskRunner.instance().engine
-    runner_module.TaskRunner.instance().engine = engine
-    yield engine
-    runner_module.TaskRunner.instance().engine = previous
 
 
 def _wait_run(client, token, run_id, timeout=20):
