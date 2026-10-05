@@ -205,3 +205,36 @@ class TestSchedulerTranslation:
 
         assert scheduler_service.describe("minute", n=30) == "每 30 分钟"
         assert scheduler_service.describe("daily", time="11:05") == "每天 11:05"
+
+
+class TestEngineLogCapture:
+    def test_engine_logs_mirrored_into_run(self, client, operator_token, fake_engine, db_session, caplog):
+        """引擎日志经根 logger 镜像进 run 日志（FR-4.2 运行中日志含引擎内部进度）。"""
+        import logging
+
+        from engine_adapter.log_hub import capture_engine_logs
+
+        run_id = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        with capture_engine_logs(run_id):
+            logging.getLogger("crawl.engine").info("[CrawlInfo] crawl finished, found 3 sites")
+        rows = client.get(f"/api/tasks/{run_id}/logs", headers=auth_header(operator_token)).json()["data"]["items"]
+        messages = [r["message"] for r in rows]
+        assert any("crawl finished" in m for m in messages), messages
+
+    def test_single_probe_noise_filtered(self, client, operator_token):
+        import logging
+
+        from engine_adapter.log_hub import capture_engine_logs
+
+        run_id = client.post(
+            "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+        ).json()["data"]["id"]
+        with capture_engine_logs(run_id):
+            logging.getLogger("clash").info("[Check] node xxx delay ok")
+            logging.getLogger("crawl.engine").info("[CrawlInfo] keep me")
+        rows = client.get(f"/api/tasks/{run_id}/logs", headers=auth_header(operator_token)).json()["data"]["items"]
+        messages = [r["message"] for r in rows]
+        assert any("delay ok" in m for m in messages) is False
+        assert any("keep me" in m for m in messages)

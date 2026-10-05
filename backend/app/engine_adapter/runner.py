@@ -185,7 +185,7 @@ class TaskRunner:
                 self._cancel_events.pop(run_id, None)
 
     def _execute(self, session: Session, run_id: int) -> None:
-        from .log_hub import log
+        from .log_hub import capture_engine_logs, log
 
         run = session.get(CrawlRun, run_id)
         if run is None:
@@ -207,82 +207,82 @@ class TaskRunner:
             cancel_event=event,
         )
         outcome = EngineOutcome()
-        stages = {"crawl": STAGES_CRAWL, "aggregate": STAGES_AGGREGATE, "full": STAGES_FULL}[run.mode]
 
-        def _stage(name: str, done: int = 0, total: int = 0) -> None:
+        def _stage(name: str) -> None:
             run.stage = name
-            run.progress = {name: f"{done}/{total}"} if total else None
             session.commit()
 
         try:
-            if run.mode in ("crawl", "full"):
-                _stage("crawl")
-                outcome.subscriptions = self.engine.crawl(ctx)
-                _persist_subscriptions(session, run_id, outcome.subscriptions)
-                log(session, run_id, "INFO", "crawl", f"subscriptions fetched: {len(outcome.subscriptions)}")
+            with capture_engine_logs(run_id):
+                if run.mode in ("crawl", "full"):
+                    _stage("crawl")
+                    outcome.subscriptions = self.engine.crawl(ctx)
+                    _persist_subscriptions(session, run_id, outcome.subscriptions)
+                    log(session, run_id, "INFO", "crawl", f"subscriptions fetched: {len(outcome.subscriptions)}")
 
-            if run.mode in ("aggregate", "full"):
-                pool, remains = _load_pool_and_remains(session, run_id)
-                log(
-                    session,
-                    run_id,
-                    "INFO",
-                    "pool",
-                    f"系统库读取订阅池 {len(pool)} 条、remains {len(remains)} 节点（旧数据唯一来源）",
-                )
-                subscriptions = list(pool)
-                for url, _origin, reachable in outcome.subscriptions:
-                    if reachable and url not in subscriptions:
-                        subscriptions.append(url)
-                _stage("fetch")
-                proxies = self.engine.fetch(ctx, subscriptions)
-                outcome.proxies = proxies
-                log(session, run_id, "INFO", "fetch", f"proxies fetched: {len(proxies)}")
-                _stage("check")
-                alive = self.engine.check(ctx, proxies + remains)
-                outcome.alive = alive
-                log(
-                    session,
-                    run_id,
-                    "INFO",
-                    "check",
-                    f"proxies check finished, total: {len(proxies) + len(remains)}, alive: {len(alive)}",
-                )
-                _persist_nodes(session, run_id, alive)
-                _stage("convert")
-                outcome.artifacts = self.engine.convert(ctx, alive)
-                for spec in outcome.artifacts:
-                    log(session, run_id, "INFO", "convert", f"artifact {spec['target']}: {spec['path']}")
-                _persist_artifacts(session, run_id, outcome.artifacts)
+                if run.mode in ("aggregate", "full"):
+                    pool, remains = _load_pool_and_remains(session, run_id)
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "pool",
+                        f"系统库读取订阅池 {len(pool)} 条、remains {len(remains)} 节点（旧数据唯一来源）",
+                    )
+                    subscriptions = list(pool)
+                    for url, _origin, reachable in outcome.subscriptions:
+                        if reachable and url not in subscriptions:
+                            subscriptions.append(url)
+                    _stage("fetch")
+                    proxies = self.engine.fetch(ctx, subscriptions)
+                    outcome.proxies = proxies
+                    log(session, run_id, "INFO", "fetch", f"proxies fetched: {len(proxies)}")
+                    _stage("check")
+                    alive = self.engine.check(ctx, proxies + remains)
+                    outcome.alive = alive
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "check",
+                        f"proxies check finished, total: {len(proxies) + len(remains)}, alive: {len(alive)}",
+                    )
+                    _persist_nodes(session, run_id, alive)
+                    _stage("convert")
+                    outcome.artifacts = self.engine.convert(ctx, alive)
+                    for spec in outcome.artifacts:
+                        log(session, run_id, "INFO", "convert", f"artifact {spec['target']}: {spec['path']}")
+                    _persist_artifacts(session, run_id, outcome.artifacts)
+                    _stage("publish")
+                    from .publisher import publish
 
-                _stage("publish")
-                from .publisher import publish
-
-                pending = publish(session, run_id, outcome.artifacts, ctx.bind_target_ids)
-                if pending:
-                    run.publish_pending = pending
-                    run.status = "partial-success"
-                    log(session, run_id, "WARNING", "publish", f"publish_pending: {pending}")
+                    pending = publish(session, run_id, outcome.artifacts, ctx.bind_target_ids)
+                    if pending:
+                        run.publish_pending = pending
+                        run.status = "partial-success"
+                        log(session, run_id, "WARNING", "publish", f"publish_pending: {pending}")
+                    else:
+                        run.status = "success"
+                        log(session, run_id, "INFO", "publish", "publish completed")
                 else:
                     run.status = "success"
-                    log(session, run_id, "INFO", "publish", "publish completed")
-            else:
-                run.status = "success"
-
-            run.stage = "done"
-            run.finished_at = _now()
-            run.duration_ms = int((time.monotonic() - started) * 1000)
-            run.stats = _stats(run.mode, outcome)
-            session.commit()
-            log(session, run_id, "INFO", "runner", f"run #{run_id} finished, status={run.status}")
         except RunCancelled:
             run.status = "cancelled"
             run.stage = run.stage or "cancelled"
-            run.finished_at = _now()
-            run.duration_ms = int((time.monotonic() - started) * 1000)
-            run.stats = _stats(run.mode, outcome)
-            session.commit()
             log(session, run_id, "WARNING", "runner", f"run #{run_id} cancelled")
+        except Exception as exc:  # noqa: BLE001 — 任务失败不拖垮 Web
+            log(session, run_id, "ERROR", "runner", f"run #{run_id} failed: {exc}")
+            if run.status in ("pending", "running"):
+                run.status = "failed"
+                run.error = str(exc)
+
+        run.stage = "done"
+        run.finished_at = _now()
+        run.duration_ms = int((time.monotonic() - started) * 1000)
+        run.stats = _stats(run.mode, outcome)
+        session.commit()
+        log(session, run_id, "INFO", "runner", f"run #{run_id} finished, status={run.status}")
+
 
     # ---------- 状态查询 ----------
     @property
