@@ -15,6 +15,7 @@ from typing import Any
 SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     "telegram": {
         "label": "Telegram 频道",
+        "flow": "抓取流程:打开频道公开页面 → 逐页翻页抓取消息 → 从消息中提取订阅链接与节点 → 按前缀重命名后参与统一验活。",
         "icon": "📨",
         "identity": "channel",  # 标识字段即 name（频道名）
         "identity_label": "频道名",
@@ -25,12 +26,13 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
              "hint": "只保留匹配的订阅链接，留空不限制"},
             {"key": "exclude", "label": "排除正则", "type": "regex", "default": "", "example": "(过期|失效)",
              "hint": "命中即丢弃，留空不限制"},
-            {"key": "rename", "label": "节点重命名", "type": "str", "default": "", "example": "🚀",
+            {"key": "rename", "label": "节点前缀", "type": "str", "default": "", "example": "🚀",
              "hint": "该频道节点统一加的前缀，留空不改名"},
         ],
     },
     "github": {
         "label": "GitHub 搜索",
+        "flow": "抓取流程:按关键词搜索 GitHub 代码/Issues → 打开命中的网页提取订阅链接 → 排除指定仓库后参与统一验活。",
         "icon": "🐙",
         "identity": "name",
         "identity_label": "源名称",
@@ -41,8 +43,9 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
              "example": "user_session=1MPr7Ts5…", "hint": "浏览器登录态（user_session 值），无 Token 时走网页版搜索"},
             {"key": "pages", "label": "搜索页数", "type": "int", "default": 2, "example": "2",
              "hint": "每个关键词翻页数（1-50）"},
-            {"key": "patterns", "label": "搜索关键词", "type": "list", "default": [], "example": "/api/v1/client/subscribe?token=",
-             "hint": "空格分隔多个词组（AND 关系）；留空使用内置模式"},
+            {"key": "patterns", "label": "搜索关键词", "type": "list", "default": [],
+             "example": "/api/v1/client/subscribe?token= 或 subscribe?token= 或 /link/ ?sub=1",
+             "hint": "每行一个关键词，空格分隔多个词组（AND 关系）；留空使用内置关键词:/api/v1/client/subscribe?token= 、subscribe?token= 、/link/ ?sub=1"},
             {"key": "exclude_repos", "label": "排除仓库", "type": "list", "default": [], "example": "wzdnzd/aggregator",
              "hint": "支持正则，命中的仓库不抓取"},
             {"key": "exclude", "label": "排除正则", "type": "regex", "default": "", "example": "(test|demo)",
@@ -51,6 +54,7 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "gist": {
         "label": "Gist",
+        "flow": "抓取流程:时间线模式扫描最新公开 gist;搜索模式按关键词检索 gist → 下载文件内容提取订阅 → 排除指定作者后参与统一验活。",
         "icon": "📄",
         "identity": "name",
         "identity_label": "源名称",
@@ -63,8 +67,9 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
             {"key": "token", "label": "GitHub Token", "type": "password", "default": "",
              "example": "ghp_xxxxxxxxxxxxxxxxxxxx", "hint": "搜索模式必填：任意 scope PAT（配合 Cookie 读取 gist 内容）",
              "depends": {"mode": "search"}, "required_when": {"mode": "search"}},
-            {"key": "patterns", "label": "搜索关键词", "type": "list", "default": [], "example": "/link/ ?sub=1",
-             "hint": "仅搜索模式；空格分隔多个词组（AND 关系）", "depends": {"mode": "search"}},
+            {"key": "patterns", "label": "搜索关键词", "type": "list", "default": [],
+             "example": "/api/v1/client/subscribe?token= 或 /link/ ?sub=1",
+             "hint": "仅搜索模式；每行一个关键词，空格分隔多个词组（AND 关系）；留空使用内置关键词:/api/v1/client/subscribe?token= 、/link/ ?sub=1", "depends": {"mode": "search"}},
             {"key": "pages", "label": "搜索页数", "type": "int", "default": 2, "example": "2",
              "hint": "仅搜索模式（1-10）", "depends": {"mode": "search"}},
             {"key": "max_gists", "label": "扫描数量上限", "type": "int", "default": 100, "example": "100",
@@ -81,6 +86,7 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "google": {
         "label": "Google 搜索",
+        "flow": "抓取流程:按关键词调用搜索引擎检索最近 N 天的结果 → 打开结果页面提取订阅链接 → 参与统一验活。",
         "icon": "🔍",
         "identity": "name",
         "identity_label": "源名称",
@@ -97,6 +103,7 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "yandex": {
         "label": "Yandex 搜索",
+        "flow": "抓取流程:按关键词调用 Yandex 检索最近 N 天的结果 → 打开结果页面提取订阅链接 → 参与统一验活。",
         "icon": "🔎",
         "identity": "name",
         "identity_label": "源名称",
@@ -113,6 +120,7 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "page": {
         "label": "通用网页",
+        "flow": "抓取流程:按 URL 列表(支持分页展开)请求网页 → 从正文提取订阅链接与节点 → 参与统一验活。",
         "icon": "🌐",
         "identity": "name",
         "identity_label": "源名称",
@@ -136,7 +144,8 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
         ],
     },
     "repo": {
-        "label": "GitHub 仓库",
+        "label": "GitHub 仓库监控",
+        "flow": "抓取流程:监控指定仓库的最新提交 → 从变更内容中提取订阅链接 → 参与统一验活。",
         "icon": "📦",
         "identity": "name",
         "identity_label": "源名称",
@@ -153,6 +162,7 @@ SOURCE_SCHEMA: dict[str, dict[str, Any]] = {
     },
     "script": {
         "label": "脚本插件",
+        "flow": "抓取流程:执行对应插件的定制逻辑(如 FOFA 测绘、v2rayse 扫描)→ 产出订阅链接 → 参与统一验活。",
         "icon": "🧪",
         "identity": "name",
         "identity_label": "源名称",

@@ -292,3 +292,6 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .ant-table-wrapper .ant-table{font-size:13px}
 .nav-item.router-link-active{background:var(--primary);color:#fff;font-weight:500;box-shadow:0 2px 8px rgba(22,119,255,.4)}
 .log-box .ant-empty-description{color:#5d6b85}
+
+/* 爬取源类型卡问号提示：长文本换行 */
+.ant-tooltip .ant-tooltip-inner{max-width:340px;white-space:pre-line;font-size:12px;line-height:1.7}

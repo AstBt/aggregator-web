@@ -48,6 +48,9 @@
         <label style="font-size:13px;color:var(--text-2)">选择源类型</label>
         <div class="radio-cards" style="margin-top:8px">
           <div v-for="(meta, key) in schemas" :key="key" class="radio-card" :class="{ sel: form.type === key }" @click="form.type = key">
+            <a-tooltip :title="meta.flow || ''" placement="top">
+              <span class="rc-help" @click.stop>?</span>
+            </a-tooltip>
             <h5>{{ meta.icon }} {{ meta.label }}</h5><p>{{ fieldsOf(key)[0]?.hint || '' }}</p>
           </div>
         </div>
@@ -141,7 +144,8 @@ const fieldVisible = (field) => {
 };
 const fieldRequired = (field) => {
   if (field.required) return true;
-  return Object.entries(field.required_when || {}).every(([k, v]) => configForm[k] === v);
+  const when = Object.entries(field.required_when || {});
+  return when.length > 0 && when.every(([k, v]) => configForm[k] === v);
 };
 
 function listLines(key) { return String(listForm[key] || '').split('\n'); }
@@ -257,12 +261,34 @@ async function onImport() {
 
 const summary = (s) => {
   const c = s.config || {};
-  if (s.type === 'telegram') return `pages=<b>${c.pages ?? '-'}</b>${c.rename ? ' · rename=<b>' + c.rename + '</b>' : ''}`;
-  if (s.type === 'page') return `url=<b>${(c.url || []).length}</b> 个${c.paged ? ' · 分页 ' + c.start + '-' + c.end : ''}`;
-  if (s.type === 'gist') return `mode=<b>${c.mode || 'timeline'}</b> · max_gists=<b>${c.max_gists ?? '-'}</b>`;
-  if (s.type === 'github') return `pages=<b>${c.pages ?? '-'}</b> · 凭证: <b>${c.token ? 'Token' : c.cookie ? 'Cookie' : '未配置'}</b>`;
-  const first = Object.entries(c)[0];
-  return first ? `${first[0]}=<b>${Array.isArray(first[1]) ? first[1].length + ' 项' : first[1]}</b>` : '默认参数';
+  if (s.type === 'telegram') {
+    const parts = [`翻页 ${c.pages ?? '-'} 页`];
+    if (c.rename) parts.push(`节点前缀 ${c.rename}`);
+    if (c.include || c.exclude) parts.push('含过滤规则');
+    return parts.join(' · ');
+  }
+  if (s.type === 'page') {
+    const parts = [`${(c.url || []).length} 个 URL`];
+    if (c.paged) parts.push(`分页 ${c.start}-${c.end}`);
+    if (c.headers && Object.keys(c.headers).length) parts.push('自定义请求头');
+    return parts.join(' · ');
+  }
+  if (s.type === 'gist') {
+    const parts = [`${c.mode === 'search' ? '搜索' : '时间线'}模式`, `上限 ${c.max_gists ?? '-'}`];
+    if (c.mode === 'search' && c.patterns?.length) parts.push(`${c.patterns.length} 个关键词`);
+    return parts.join(' · ');
+  }
+  if (s.type === 'github') {
+    const parts = [`翻页 ${c.pages ?? '-'}`];
+    parts.push(`凭证 ${c.token ? 'Token' : c.cookie ? 'Cookie' : '未配置'}`);
+    if (c.patterns?.length) parts.push(`${c.patterns.length} 个关键词`);
+    return parts.join(' · ');
+  }
+  if (s.type === 'repo') return `监控 ${c.username || '?'}/${c.repo || '?'} · 最近 ${c.commits ?? 3} 次提交`;
+  if (s.type === 'script') return `插件 ${c.plugin || '未选择'}${c.persist ? ' · 断点续爬' : ''}`;
+  if (s.type === 'google') return `每词上限 ${c.limit ?? '-'} · 最近 ${c.days ?? '-'} 天`;
+  if (s.type === 'yandex') return `最近 ${c.days ?? '-'} 天 · 翻页 ${c.pages ?? '-'}`;
+  return '默认参数';
 };
 </script>
 
@@ -271,4 +297,7 @@ const summary = (s) => {
 .kv-editor{border:1px solid var(--border);border-radius:8px;padding:10px}
 .kv-row-edit{display:flex;gap:8px;align-items:center;margin-bottom:8px}
 .kv-row-edit a{padding:0 6px}
+.rc-help{position:absolute;top:8px;right:8px;width:18px;height:18px;border-radius:50%;border:1px solid #d9d9d9;color:var(--text-3);font-size:11px;display:flex;align-items:center;justify-content:center;cursor:help;background:#fff}
+.rc-help:hover{border-color:var(--primary);color:var(--primary)}
+.radio-card{position:relative}
 </style>
