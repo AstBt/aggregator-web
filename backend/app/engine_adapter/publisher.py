@@ -1,17 +1,21 @@
 # -*- coding: utf-8 -*-
-"""发布器：准原子写入绑定目标 + 补偿重试（FR-4.10 / FR-5.14, A16）。"""
+"""发布器：本地/远端存储目标写入（准原子）+ 补偿重试（FR-4.10 / FR-5.14, A16）。"""
 
 from __future__ import annotations
 
 import os
 from datetime import datetime
-from typing import Any
 
 from sqlalchemy.orm import Session
 
 from models import StorageTarget, WriteLog
 
 FILENAMES = {"clash": "clash.yaml", "v2ray": "v2ray.txt", "singbox": "singbox.json"}
+
+
+def _read(path: str) -> str:
+    with open(path, "r", encoding="utf8") as f:
+        return f.read()
 
 
 def _write_file(path: str, content: str) -> int:
@@ -21,26 +25,65 @@ def _write_file(path: str, content: str) -> int:
     return os.path.getsize(path)
 
 
-def _content_for(target: str, spec: dict) -> str:
-    with open(spec["path"], "r", encoding="utf8") as f:
-        return f.read()
+def _push_remote(target: StorageTarget, specs: list[dict], group: str) -> dict:
+    """远端目标：复用 subscribe/push 的既有实现（gist / pastegg / pastefy / imperial / qbin）。"""
+    from config.models import StorageConfig, StorageItem
+    from engine_adapter.registry import ensure_engine_on_path
+
+    ensure_engine_on_path()
+    import push as push_module
+    from services import storage_service
+
+    token = storage_service.decrypt_token(target.token_ref or "")
+    config = dict(target.config or {})
+    storage = StorageConfig(
+        engine=target.type,
+        token=token,
+        base=config.get("base", ""),
+        domain=config.get("domain", ""),
+        items={},
+    )
+    tool = push_module.get_instance(storage)
+    written = 0
+    for spec in specs:
+        content = _read(spec["path"])
+        if not content.strip():
+            continue  # 空产物不推送（与引擎层空内容保护一致）
+        item = StorageItem(
+            gist_id=config.get("gist_id", ""),
+            filename=os.path.basename(spec["path"]),
+            folder_id=config.get("folder_id", ""),
+            file_id=config.get("file_id", "") or os.path.basename(spec["path"]),
+        )
+        if tool.push_to(content=content, item=item, group=group):
+            written += 1
+        else:
+            raise ValueError(f"远端写入失败: {os.path.basename(spec['path'])}")
+    return {"ok": True, "written": written}
 
 
 def _write_target(session: Session, run_id: int, target: StorageTarget, artifacts: list[dict]) -> dict:
     """写入单个目标；成功返回 ok，失败返回错误（不抛异常，隔离单目标故障）。"""
     try:
-        directory = str((target.config or {}).get("dir") or "")
-        if not directory:
-            raise ValueError("本地目标未配置目录")
-        written = 0
-        for spec in artifacts:
-            name = FILENAMES.get(spec["target"], spec["target"])
-            _write_file(os.path.join(directory, name), _content_for(spec["target"], spec))
-            written += 1
+        if target.type == "local":
+            directory = str((target.config or {}).get("dir") or "")
+            if not directory:
+                raise ValueError("本地目标未配置目录")
+            written = 0
+            for spec in artifacts:
+                content = _read(spec["path"])
+                if not content.strip():
+                    continue
+                _write_file(os.path.join(directory, os.path.basename(spec["path"])), content)
+                written += 1
+            size = written
+        else:
+            result = _push_remote(target, artifacts, group=f"run-{run_id}")
+            size = result["written"]
         target.last_write_at = datetime.now()
         target.last_write_ok = True
         target.last_write_error = None
-        session.add(WriteLog(run_id=run_id, target_id=target.id, kind="artifact", target_type=target.type, ok=True, size=written))
+        session.add(WriteLog(run_id=run_id, target_id=target.id, kind="artifact", target_type=target.type, ok=True, size=size))
         session.commit()
         return {"ok": True}
     except Exception as exc:  # noqa: BLE001 — 单目标失败隔离

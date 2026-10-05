@@ -238,3 +238,71 @@ class TestEngineLogCapture:
         messages = [r["message"] for r in rows]
         assert any("delay ok" in m for m in messages) is False
         assert any("keep me" in m for m in messages)
+
+
+class TestRemotePublish:
+    def test_gist_target_uses_push_machinery(self, client, admin_token, operator_token, db_session, tmp_path, monkeypatch):
+        """远端目标经 subscribe/push 写入（非本地文件分支）。"""
+        import sys
+        from pathlib import Path
+
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import push as push_module
+
+        calls = {}
+
+        class FakeGist:
+            def push_to(self, content, item, group="", retry=5, **kwargs):
+                calls.setdefault("items", []).append({"file": item.filename, "gist": item.gist_id, "n": len(content)})
+                return True
+
+        monkeypatch.setattr(push_module, "get_instance", lambda storage: FakeGist())
+
+        from models import CrawlRun, StorageTarget
+
+        session = db_session
+        target = StorageTarget(type="gist", name="gm", enable=True,
+                               config={"gist_id": "6b08d288"}, token_ref="enc:xxx")
+        session.add(target)
+        session.flush()
+
+        run = CrawlRun(run_uuid="pub-1", trigger="manual", mode="full", status="running")
+        session.add(run)
+        session.flush()
+
+        # 准备两个产物文件
+        art_dir = tmp_path / "arts"
+        art_dir.mkdir()
+        (art_dir / "clash.yaml").write_text("proxies: []", encoding="utf8")
+        (art_dir / "singbox.json").write_text('{"outbounds":[]}', encoding="utf8")
+        specs = [{"target": "clash", "path": str(art_dir / "clash.yaml"), "size": 12},
+                 {"target": "singbox", "path": str(art_dir / "singbox.json"), "size": 17}]
+
+        from engine_adapter.publisher import publish
+
+        pending = publish(session, run.id, specs, [target.id])
+        session.commit()
+        assert pending == []
+        assert [c["file"] for c in calls["items"]] == ["clash.yaml", "singbox.json"]
+        assert calls["items"][0]["gist"] == "6b08d288"
+
+    def test_empty_artifact_not_pushed(self, client, admin_token, db_session, tmp_path):
+        from models import CrawlRun, StorageTarget
+
+        from engine_adapter.publisher import publish
+
+        session = db_session
+        target = session.query(StorageTarget).filter_by(name="data-local").first()
+        target.config = {"dir": str(tmp_path / "out"), "keep": 5}
+        run = CrawlRun(run_uuid="pub-2", trigger="manual", mode="full", status="running")
+        session.add(run)
+        session.flush()
+        empty = tmp_path / "v2ray.txt"
+        empty.write_text("", encoding="utf8")
+        specs = [{"target": "v2ray", "path": str(empty), "size": 0}]
+        pending = publish(session, run.id, specs, [target.id])
+        session.commit()
+        assert pending == []
+        assert not (tmp_path / "out" / "v2ray.txt").exists()  # 空产物不落盘

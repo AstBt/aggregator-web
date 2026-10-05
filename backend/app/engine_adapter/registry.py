@@ -18,6 +18,11 @@ def _ensure_engine_on_path() -> None:
         sys.path.insert(0, path)
 
 
+def ensure_engine_on_path() -> None:
+    """确保 subscribe/ 在 sys.path（供 publisher 等惰性导入引擎模块）。"""
+    _ensure_engine_on_path()
+
+
 def _load_plugins() -> frozenset[str]:
     _ensure_engine_on_path()
     try:

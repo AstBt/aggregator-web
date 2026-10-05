@@ -9,6 +9,7 @@ subconverter 的既有实现。测试使用 HermeticEngine（runner.py）注入�
 from __future__ import annotations
 
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -21,6 +22,15 @@ if str(SUBSCRIBE_DIR) not in sys.path:
     sys.path.insert(0, str(SUBSCRIBE_DIR))
 
 from engine_adapter.runner import RunContext  # noqa: E402
+
+try:
+    from logger import logger  # noqa: E402
+except Exception:  # pragma: no cover
+    import logging
+    logger = logging.getLogger("engine")
+
+
+_GROUP_PLACEHOLDER = "web"  # 无分组模型下供引擎筛选的占位分组名
 
 
 class RealEngine:
@@ -49,17 +59,17 @@ class RealEngine:
 
     # ---------- 拉取节点 ----------
     def fetch(self, ctx: RunContext, subscriptions: list[str]) -> list[dict]:
-        import utils
+        import executable
         import workflow
+        from config.models import NodeInput
 
+        _, subconverter_bin = executable.which_bin()
         tasks = []
         for index, url in enumerate(subscriptions):
-            from config.models import NodeInput
-
             tasks.append(
                 workflow.TaskConfig(
                     name=f"sub-{index}",
-                    bin_name="",
+                    bin_name=subconverter_bin,
                     taskid=index + 1,
                     nodes=NodeInput(subscribe=url),
                     index=-1,
@@ -73,7 +83,11 @@ class RealEngine:
         for task in tasks:
             if ctx.cancelled:
                 break
-            _taskid, items = workflow.executewrapper(task)
+            try:
+                _taskid, items = workflow.executewrapper(task)
+            except Exception as exc:  # noqa: BLE001 — 单个订阅失败不拖垮整轮
+                logger.warning(f"[WebEngine] fetch subscription failed, name={task.name}, error={exc}")
+                continue
             proxies.extend(items)
         return proxies
 
@@ -101,29 +115,57 @@ class RealEngine:
 
     # ---------- 转换 ----------
     def convert(self, ctx: RunContext, alive: list[dict]) -> list[dict]:
+        """转换存活节点为 clash / v2ray / singbox。
+
+        subconverter 进程以其所在目录为工作目录，generate.ini 与源文件必须落在
+        subconverter/ 下；转换成功后把产物移到临时目录，避免污染仓库并供发布器读取。
+        """
         import subconverter
 
+        import executable
+
         _, subconverter_bin = executable.which_bin()
+        workdir = os.path.join(PROJECT_DIR, "subconverter")
         directory = tempfile.mkdtemp(prefix="agg-convert-")
         data = {"proxies": clash_filtered(alive)}
-        source = os.path.join(directory, "config.yaml")
-        with open(source, "w", encoding="utf8") as f:
+        with open(os.path.join(workdir, "config.yaml"), "w", encoding="utf8") as f:
             yaml.add_representer(_quoted(), _quoted_repr)
             yaml.dump(data, f, allow_unicode=True)
+
         specs = []
-        for target in ("clash", "v2ray", "singbox"):
-            dest = subconverter.get_filename(target=target)
-            destination = os.path.join(directory, dest)
-            generate_conf = os.path.join(directory, "generate.ini")
-            ok = subconverter.generate_conf(
-                filepath=generate_conf, name=f"convert_{target}", source="config.yaml", dest=dest,
-                target=target, emoji=True, list_only=True,
-            )
-            if not ok or not subconverter.convert(binname=subconverter_bin, artifact=f"convert_{target}"):
-                continue
-            path = os.path.join(PROJECT_DIR, "subconverter", dest)
-            if os.path.isfile(path):
-                specs.append({"target": target, "path": path, "size": os.path.getsize(path)})
+        try:
+            for target in ("clash", "v2ray", "singbox"):
+                dest = subconverter.get_filename(target=target)
+                ok = subconverter.generate_conf(
+                    filepath=os.path.join(workdir, "generate.ini"),
+                    name=f"convert_{target}",
+                    source="config.yaml",
+                    dest=dest,
+                    target=target,
+                    emoji=True,
+                    list_only=True,
+                )
+                if not ok or not subconverter.convert(binname=subconverter_bin, artifact=f"convert_{target}"):
+                    logger.warning(f"[WebEngine] convert failed, target={target}")
+                    continue
+                produced = os.path.join(workdir, dest)
+                if not os.path.isfile(produced):
+                    continue
+                if os.path.getsize(produced) <= 0:
+                    logger.warning(f"[WebEngine] empty artifact skipped, target={target}")
+                    os.remove(produced)
+                    continue
+                moved = os.path.join(directory, dest)
+                shutil.move(produced, moved)
+                specs.append({"target": target, "path": moved, "size": os.path.getsize(moved)})
+        finally:
+            for name in ("config.yaml", "generate.ini"):
+                stale = os.path.join(workdir, name)
+                if os.path.isfile(stale):
+                    try:
+                        os.remove(stale)
+                    except OSError:
+                        pass
         return specs
 
 
@@ -180,6 +222,8 @@ def _crawl_config_dict(ctx: RunContext) -> tuple[dict, dict]:
                 channels[s.name] = {
                     "include": cfg.get("include", ""),
                     "exclude": cfg.get("exclude", ""),
+                    # 引擎按 push_to 过滤频道；Web 模型无分组，注入占位分组使频道生效
+                    "push_to": [_GROUP_PLACEHOLDER],
                     "task": task,
                 }
             config["telegram"] = {"enable": True, "pages": telegram[0].config.get("pages", 5), "channels": channels}
