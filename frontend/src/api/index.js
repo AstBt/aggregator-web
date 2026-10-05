@@ -71,9 +71,16 @@ export const announcement = {
 export const results = {
   subscriptions: (params) => http.get('/subscriptions', { params }),
   subscription: (id) => http.get(`/subscriptions/${id}`),
+  subscriptionNodes: (id, params) => http.get(`/subscriptions/${id}/nodes`, { params }),
   nodes: (params) => http.get('/nodes', { params }),
   node: (id) => http.get(`/nodes/${id}`),
   export: (data) => http.post('/nodes/export', data),
+  testSubscriptions: (ids) => http.post('/subscriptions/test', { ids }),
+  testNodes: (body) => http.post('/nodes/test', body),
+};
+
+export const testJobs = {
+  list: () => http.get('/test-jobs'),
 };
 
 export const storage = {
