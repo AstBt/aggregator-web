@@ -10,6 +10,20 @@
       </div>
     </div>
 
+    <div class="card" v-if="auth.atLeast('admin')">
+      <div class="card-hd"><h3>公告提醒</h3><span class="extra">启用后展示在页面右上角铃铛左侧，滚动展现</span></div>
+      <div class="callout gray" style="margin-bottom:14px">向所有登录用户展示一条滚动公告（如维护通知）；点击顶栏公告可暂停滚动。</div>
+      <div class="form-item full">
+        <label>公告内容 <span class="hint">最多 500 字，留空并停用时 hides</span></label>
+        <a-textarea v-model:value="annForm.text" :rows="3" :maxlength="500" show-count placeholder="例：系统将于今晚 23:00 升级维护，届时任务将暂停执行" />
+      </div>
+      <div class="sw-row" style="margin-bottom:14px">
+        <a-switch v-model:checked="annForm.enable" />
+        <span style="font-size:13px">启用公告</span>
+      </div>
+      <a-button type="primary" :loading="annSaving" @click="onSaveAnnouncement">保存公告</a-button>
+    </div>
+
     <div class="card">
       <div class="card-hd"><h3>修改密码</h3></div>
       <div class="callout warn">🔒 密码采用 bcrypt 哈希存储；修改后当前账号在其他设备的登录会话将全部失效。</div>
@@ -37,17 +51,39 @@
 </template>
 
 <script setup>
-import { computed, reactive } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 
-import { auth as authApi } from '../api';
+import { announcement as announcementApi, auth as authApi } from '../api';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
 const roleLabel = computed(() => ({ admin: '管理员（admin）', operator: '操作员（operator）', viewer: '只读（viewer）' }[auth.role]));
 const form = reactive({ old_password: '', new_password: '', confirm: '' });
+const annForm = reactive({ text: '', enable: false });
+const annSaving = ref(false);
+
+onMounted(async () => {
+  if (!auth.atLeast('admin')) return;
+  try {
+    const data = await announcementApi.read();
+    Object.assign(annForm, data);
+  } catch { /* ignore */ }
+});
+
+async function onSaveAnnouncement() {
+  annSaving.value = true;
+  try {
+    await announcementApi.save({ text: annForm.text, enable: annForm.enable });
+    message.success('公告已保存');
+  } catch (error) {
+    message.error(error.message);
+  } finally {
+    annSaving.value = false;
+  }
+}
 
 const onSubmit = async () => {
   if (form.new_password !== form.confirm) return message.error('两次输入的新密码不一致');

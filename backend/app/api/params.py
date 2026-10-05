@@ -115,3 +115,31 @@ def test_url(
     if proxy_cfg.get("enable") and proxy_cfg.get("address"):
         proxy = proxy_cfg["address"]
     return settings_service.probe_url(url, proxy=proxy)
+
+
+# ---------- 公告提醒 ----------
+class AnnouncementIn(BaseModel):
+    text: str = ""
+    enable: bool = False
+
+
+@router.get("/announcement")
+def read_announcement(
+    _: User = Depends(require_role("viewer")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """公告读取：登录用户可见（顶栏铃铛侧滚动展示）。"""
+    return settings_service.get_announcement(db)
+
+
+@router.put("/announcement")
+def write_announcement(
+    body: AnnouncementIn,
+    _: User = Depends(require_role("admin")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """公告设置：仅管理员。"""
+    try:
+        return settings_service.save_announcement(db, body.text, body.enable)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc

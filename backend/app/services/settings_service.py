@@ -70,6 +70,25 @@ def liveness_uses_proxy() -> bool:
     return False
 
 
+ANNOUNCEMENT_MAX = 500
+
+
+def get_announcement(session) -> dict[str, Any]:
+    setting = session.get(Setting, "announcement")
+    value = dict(setting.value) if setting else {}
+    return {"text": str(value.get("text", "")), "enable": bool(value.get("enable", False))}
+
+
+def save_announcement(session, text: str, enable: bool) -> dict[str, Any]:
+    text = (text or "").strip()
+    if len(text) > ANNOUNCEMENT_MAX:
+        raise ValueError(f"公告长度不能超过 {ANNOUNCEMENT_MAX} 字")
+    if enable and not text:
+        raise ValueError("启用公告前需要填写公告内容")
+    payload = {"text": text, "enable": bool(enable)}
+    return save_group("announcement", payload, session)
+
+
 def _merge(current: dict[str, Any], payload: dict[str, Any], allowed: tuple[str, ...]) -> dict[str, Any]:
     merged = dict(current)
     for key in allowed:

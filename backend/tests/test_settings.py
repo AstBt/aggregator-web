@@ -135,3 +135,45 @@ class TestAliveParams:
         from services import settings_service
 
         assert settings_service.liveness_uses_proxy() is False
+
+
+class TestAnnouncement:
+    def test_default_empty_and_readable(self, client, operator_token):
+        data = client.get("/api/settings/announcement", headers=auth_header(operator_token)).json()["data"]
+        assert data == {"text": "", "enable": False}
+
+    def test_admin_can_update(self, client, admin_token):
+        resp = client.put(
+            "/api/settings/announcement",
+            json={"text": "系统将于今晚 23:00 升级维护", "enable": True},
+            headers=auth_header(admin_token),
+        )
+        assert resp.status_code == 200
+        data = client.get("/api/settings/announcement", headers=auth_header(admin_token)).json()["data"]
+        assert data["text"] == "系统将于今晚 23:00 升级维护"
+        assert data["enable"] is True
+
+    def test_operator_readonly(self, client, admin_token, operator_token):
+        resp = client.put(
+            "/api/settings/announcement",
+            json={"text": "x", "enable": True},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 403
+
+    def test_disable_hides_text(self, client, admin_token):
+        client.put(
+            "/api/settings/announcement",
+            json={"text": "临时通知", "enable": False},
+            headers=auth_header(admin_token),
+        )
+        data = client.get("/api/settings/announcement", headers=auth_header(admin_token)).json()["data"]
+        assert data == {"text": "临时通知", "enable": False}
+
+    def test_text_length_limit(self, client, admin_token):
+        resp = client.put(
+            "/api/settings/announcement",
+            json={"text": "长" * 501, "enable": True},
+            headers=auth_header(admin_token),
+        )
+        assert resp.status_code == 400

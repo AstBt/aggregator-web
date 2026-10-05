@@ -24,6 +24,12 @@
       <header class="topbar">
         <div class="crumb">{{ title }}</div>
         <div class="topbar-right">
+          <div v-if="announcement.enable && announcement.text" class="ann-bar" @click="annPaused = !annPaused">
+            <div class="ann-track" :class="{ pause: annPaused }">
+              <span class="ann-text">{{ announcement.text }}</span>
+              <span class="ann-text ann-ghost">{{ announcement.text }}</span>
+            </div>
+          </div>
           <div class="icon-btn">🔔</div>
           <a-dropdown>
             <div class="user-chip">
@@ -45,10 +51,11 @@
 </template>
 
 <script setup>
-import { computed } from 'vue';
+import { computed, onMounted, onBeforeUnmount, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { message } from 'ant-design-vue';
 
+import { announcement as announcementApi } from '../api';
 import { useAuthStore } from '../stores/auth';
 
 const auth = useAuthStore();
@@ -57,10 +64,38 @@ const router = useRouter();
 const title = computed(() => route.meta.title || '控制台');
 const roleLabel = computed(() => ({ admin: '管理员', operator: '操作员', viewer: '只读' }[auth.role] || auth.role));
 
+const announcement = ref({ text: '', enable: false });
+const annPaused = ref(false);
+let annTimer = null;
+
+const loadAnnouncement = async () => {
+  try {
+    announcement.value = await announcementApi.read();
+  } catch {
+    /* 忽略公告加载失败 */
+  }
+};
+
 const go = (path) => router.push(path);
 const logout = async () => {
   await auth.logout();
   message.success('已退出登录');
   router.push('/login');
 };
+
+onMounted(() => {
+  loadAnnouncement();
+  annTimer = setInterval(loadAnnouncement, 5 * 60 * 1000);
+});
+onBeforeUnmount(() => clearInterval(annTimer));
 </script>
+
+<style scoped>
+.ann-bar{max-width:340px;overflow:hidden;position:relative;height:34px;display:flex;align-items:center;cursor:pointer;border-radius:8px;background:#fffbe6;border:1px solid #ffe58f;padding:0 12px}
+.ann-track{position:relative;display:flex;gap:36px;white-space:nowrap;animation:ann-scroll 18s linear infinite}
+.ann-track.pause{animation-play-state:paused}
+.ann-text{font-size:12.5px;color:#d48806;white-space:nowrap}
+.ann-ghost{position:absolute;left:100%;top:0}
+@keyframes ann-scroll{from{transform:translateX(0)}to{transform:translateX(-100%)}}
+.ann-bar:hover{background:#fff7d6}
+</style>

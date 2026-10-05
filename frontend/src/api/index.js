@@ -63,6 +63,11 @@ export const exports = {
   list: (limit = 10) => http.get('/exports', { params: { limit } }),
 };
 
+export const announcement = {
+  read: () => http.get('/settings/announcement'),
+  save: (data) => http.put('/settings/announcement', data),
+};
+
 export const results = {
   subscriptions: (params) => http.get('/subscriptions', { params }),
   subscription: (id) => http.get(`/subscriptions/${id}`),
