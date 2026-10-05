@@ -14,6 +14,13 @@ from sqlalchemy.orm import Session
 import db
 from models import CrawlRun
 
+try:
+    from logger import logger  # noqa: F401
+except Exception:  # pragma: no cover
+    import logging
+
+    logger = logging.getLogger("runner")
+
 
 class RunCancelled(Exception):
     """任务在安全点被取消。"""
@@ -38,9 +45,25 @@ class RunContext:
 
 
 @dataclass
+class LooseNode:
+    """爬取直接获得的散节点（与订阅解析节点相互独立）。"""
+
+    source: str  # 爬取源名称（TG 为频道名）
+    uri: str = ""  # 原始分享链接
+    proxy: dict | None = None  # 已解析的节点
+
+
+@dataclass
+class CrawlOutcome:
+    subscriptions: list[tuple[str, str, bool]] = field(default_factory=list)  # (url, origin, reachable)
+    loose: list[LooseNode] = field(default_factory=list)  # 散节点（带来源归属）
+
+
+@dataclass
 class EngineOutcome:
     subscriptions: list[tuple[str, str, bool]] = field(default_factory=list)  # (url, origin, reachable)
-    proxies: list[dict] = field(default_factory=list)  # 原始节点
+    loose: list["LooseNode"] = field(default_factory=list)  # 散节点（带来源归属）
+    proxies: list[dict] = field(default_factory=list)  # 原始节点（含 _kind/_source/_source_sub 标记）
     alive: list[dict] = field(default_factory=list)  # 验活存活节点
     artifacts: list[dict] = field(default_factory=list)  # [{"target","path","size"}]
 
@@ -48,9 +71,9 @@ class EngineOutcome:
 class Engine(Protocol):
     """引擎协议：抓取→拉取→验活→转换；真实实现见 engine.py。"""
 
-    def crawl(self, ctx: RunContext) -> list[tuple[str, str, bool]]: ...
+    def crawl(self, ctx: RunContext) -> CrawlOutcome: ...
 
-    def fetch(self, ctx: RunContext, subscriptions: list[str]) -> list[dict]: ...
+    def fetch(self, ctx: RunContext, subscriptions: list[str], loose: list[LooseNode]) -> list[dict]: ...
 
     def check(self, ctx: RunContext, proxies: list[dict]) -> list[dict]: ...
 
@@ -64,13 +87,13 @@ class HermeticEngine:
         self._subscriptions = subscriptions
         self._proxies = proxies
 
-    def crawl(self, ctx: RunContext) -> list[tuple[str, str, bool]]:
+    def crawl(self, ctx: RunContext) -> CrawlOutcome:
         ctx.check_cancelled()
-        return list(self._subscriptions)
+        return CrawlOutcome(subscriptions=list(self._subscriptions), loose=[])
 
-    def fetch(self, ctx: RunContext, subscriptions: list[str]) -> list[dict]:
+    def fetch(self, ctx: RunContext, subscriptions: list[str], loose: list[LooseNode]) -> list[dict]:
         ctx.check_cancelled()
-        return [dict(p) for p in self._proxies]
+        return [{**p, "_kind": "sub"} for p in self._proxies]
 
     def check(self, ctx: RunContext, proxies: list[dict]) -> list[dict]:
         ctx.check_cancelled()
@@ -168,16 +191,25 @@ class TaskRunner:
         try:
             self._execute(session, run_id)
         except Exception as exc:  # noqa: BLE001 — 任务失败不拖垮 Web
-            from .log_hub import log
+            # 失败路径自身必须健壮：先落终态、再记日志，绝不让异常逃出线程
+            # （曾因异常在已失败会话上继续 commit 导致线程死亡、run 卡在 running）
+            try:
+                session.rollback()
+                run = session.get(CrawlRun, run_id)
+                if run and run.status in ("pending", "running"):
+                    run.status = "failed"
+                    run.error = str(exc)
+                    run.finished_at = _now()
+                    run.duration_ms = _elapsed_ms(run.started_at)
+                    session.commit()
+            except Exception:  # noqa: BLE001 — 兜底：至少释放执行器锁
+                logger.error(f"[Runner] failed to finalize run #{run_id} after error: {exc}")
+            try:
+                from .log_hub import log
 
-            log(session, run_id, "ERROR", "runner", f"run #{run_id} failed: {exc}")
-            run = session.get(CrawlRun, run_id)
-            if run and run.status in ("pending", "running"):
-                run.status = "failed"
-                run.error = str(exc)
-                run.finished_at = _now()
-                run.duration_ms = _elapsed_ms(run.started_at)
-                session.commit()
+                log(session, run_id, "ERROR", "runner", f"run #{run_id} failed: {exc}")
+            except Exception:  # noqa: BLE001 — 日志写入失败不影响终态
+                logger.error(f"[Runner] cannot write failure log for run #{run_id}: {exc}")
         finally:
             session.close()
             with self._lock:
@@ -216,9 +248,17 @@ class TaskRunner:
             with capture_engine_logs(run_id):
                 if run.mode in ("crawl", "full"):
                     _stage("crawl")
-                    outcome.subscriptions = self.engine.crawl(ctx)
+                    crawl_outcome = self.engine.crawl(ctx)
+                    outcome.subscriptions = crawl_outcome.subscriptions
+                    outcome.loose = crawl_outcome.loose
                     _persist_subscriptions(session, run_id, outcome.subscriptions)
-                    log(session, run_id, "INFO", "crawl", f"subscriptions fetched: {len(outcome.subscriptions)}")
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "crawl",
+                        f"subscriptions fetched: {len(outcome.subscriptions)}, loose nodes: {len(outcome.loose)}",
+                    )
 
                 if run.mode in ("aggregate", "full"):
                     pool, remains = _load_pool_and_remains(session, run_id)
@@ -234,20 +274,22 @@ class TaskRunner:
                         if reachable and url not in subscriptions:
                             subscriptions.append(url)
                     _stage("fetch")
-                    proxies = self.engine.fetch(ctx, subscriptions)
+                    proxies = self.engine.fetch(ctx, subscriptions, outcome.loose)
                     outcome.proxies = proxies
                     log(session, run_id, "INFO", "fetch", f"proxies fetched: {len(proxies)}")
                     _stage("check")
-                    alive = self.engine.check(ctx, proxies + remains)
+                    checked = proxies + remains
+                    alive = self.engine.check(ctx, checked)
                     outcome.alive = alive
+                    alive_keys = {_node_key(p) for p in alive}
                     log(
                         session,
                         run_id,
                         "INFO",
                         "check",
-                        f"proxies check finished, total: {len(proxies) + len(remains)}, alive: {len(alive)}",
+                        f"proxies check finished, total: {len(checked)}, alive: {len(alive)}",
                     )
-                    _persist_nodes(session, run_id, alive)
+                    _persist_nodes(session, run_id, checked, alive_keys)
                     _stage("convert")
                     outcome.artifacts = self.engine.convert(ctx, alive)
                     for spec in outcome.artifacts:
@@ -291,20 +333,30 @@ class TaskRunner:
 
 
 def _persist_subscriptions(session: Session, run_id: int, subscriptions: list[tuple[str, str, bool]]) -> None:
+    """订阅入库：批内按 url 去重（跨源可能重复命中；可达优先），单次提交。"""
     from datetime import datetime
 
     from models import Subscription
 
+    merged: dict[str, tuple[str, bool]] = {}
     for url, origin, reachable in subscriptions:
+        url = (url or "").strip()
+        if not url:
+            continue
+        prev = merged.get(url)
+        if prev is None or (reachable and not prev[1]):
+            merged[url] = (origin, reachable)
+
+    now = datetime.now()
+    for url, (origin, reachable) in merged.items():
         row = session.query(Subscription).filter_by(url=url).first()
-        now = datetime.now()
         if row is None:
             row = Subscription(url=url, origin=origin, first_seen_at=now)
             session.add(row)
         row.origin = origin
         row.last_seen_at = now
         row.status = "alive" if reachable else "pending"
-        row.errors = 0 if reachable else row.errors + 1
+        row.errors = 0 if reachable else (row.errors or 0) + 1
         if reachable:
             row.last_alive_at = now
     session.commit()
@@ -332,10 +384,16 @@ def _load_pool_and_remains(session: Session, run_id: int) -> tuple[list[str], li
     return pool, remains
 
 
-def _persist_nodes(session: Session, run_id: int, alive: list[dict]) -> None:
+def _persist_nodes(session: Session, run_id: int, checked: list[dict], alive_keys: set[str] | None = None) -> None:
+    """节点入库：全部被检节点（含失效），按 fetch 标记区分散节点/订阅节点。
+
+    alive_keys 为 None 时视为全部存活（测试替身语义）；否则按 server:port:type 判定。
+    """
     from models import Node
 
-    for proxy in alive:
+    for proxy in checked:
+        raw = {k: v for k, v in proxy.items() if k not in ("_kind", "_source", "_source_sub")}
+        alive = True if alive_keys is None else _node_key(proxy) in alive_keys
         session.add(
             Node(
                 run_id=run_id,
@@ -343,13 +401,19 @@ def _persist_nodes(session: Session, run_id: int, alive: list[dict]) -> None:
                 protocol=str(proxy.get("type", "")).lower(),
                 server=str(proxy.get("server", "")),
                 port=int(proxy.get("port", 0) or 0),
-                source_sub=proxy.get("sub") or proxy.get("source_sub"),
+                kind=proxy.get("_kind", "sub"),
+                source=proxy.get("_source"),
+                source_sub=proxy.get("_source_sub") or proxy.get("sub"),
                 delay_ms=proxy.get("delay"),
-                alive=True,
-                raw=proxy,
+                alive=alive,
+                raw=raw,
             )
         )
     session.commit()
+
+
+def _node_key(proxy: dict) -> str:
+    return f"{proxy.get('server', '')}:{proxy.get('port', '')}:{proxy.get('type', '')}"
 
 
 def _persist_artifacts(session: Session, run_id: int, artifacts: list[dict]) -> None:

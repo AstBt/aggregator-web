@@ -21,7 +21,7 @@ PROJECT_DIR = Path(__file__).resolve().parents[3]
 if str(SUBSCRIBE_DIR) not in sys.path:
     sys.path.insert(0, str(SUBSCRIBE_DIR))
 
-from engine_adapter.runner import RunContext  # noqa: E402
+from engine_adapter.runner import CrawlOutcome, LooseNode, RunContext  # noqa: E402
 
 try:
     from logger import logger  # noqa: E402
@@ -37,58 +37,102 @@ class RealEngine:
     """生产引擎。"""
 
     # ---------- 抓取 ----------
-    def crawl(self, ctx: RunContext) -> list[tuple[str, str, bool]]:
-        from crawl.engine import run as crawl_run
-        from config.models import CrawlConfig, Node as ConfNode, StorageConfig
+    def crawl(self, ctx: RunContext) -> "CrawlOutcome":
+        """按爬取源逐渠道执行：订阅（带来源）+ 散节点（按源归属）。
 
-        config_dict, credentials = _crawl_config_dict(ctx)
-        config = CrawlConfig.parse(ConfNode(config_dict), StorageConfig())
-        if not config.enable:
-            return []
-        # 凭证注入：渠道从环境变量读取（GH_TOKEN/GH_COOKIE/PUSH_TOKEN），
-        # 这里按源配置临时注入并在结束后还原（任务串行执行，无并发冲突）
-        with _env_scope(credentials):
-            sites = crawl_run(
-                config, storage=None, num_threads=ctx.params.get("num_threads", 32), display=False, mode=0
-            )
-        out: list[tuple[str, str, bool]] = []
-        for site in sites:
-            for url in site.nodes.subscribe_list():
-                out.append((url, site.origin or "TEMPORARY", True))
-        return out
+        不使用 crawl.engine.run 的合并入口：那会把全部渠道的散节点合并为
+        单个 crawled-nodes 站点，丢失来源归属；逐源调用可获得「哪个源产出
+        哪些散节点」，供结果页按爬取源名称（TG 为频道名）展示。
+        """
+        from crawl.base import CHANNELS
+        from crawl.models import CrawlContext
+
+        crawl_ctx = CrawlContext(
+            mode=1,
+            include_nodes=True,
+            max_fails=5,
+            exclude="",
+            task=None,
+            storage=None,
+            pushtool=None,
+            num_threads=int(ctx.params.get("num_threads", 32)),
+            display=False,
+            proxy="",
+        )
+        found: list[tuple[str, str]] = []
+        loose: list[LooseNode] = []
+        for source_name, channel_key, section, credentials in _build_sections(ctx):
+            channel = CHANNELS.get(channel_key)
+            if channel is None:
+                continue
+            try:
+                with _env_scope(credentials):
+                    result = channel.crawl(section, crawl_ctx)
+            except Exception as exc:  # noqa: BLE001 — 单源失败不拖垮整轮
+                logger.warning(f"[WebEngine] crawl source failed, name={source_name}, error={exc}")
+                continue
+            for item in result.items:
+                found.append((item.url, item.origin or "TEMPORARY"))
+            for uri in result.nodes.uris:
+                loose.append(LooseNode(source=source_name, uri=uri))
+            for proxy in result.nodes.proxies:
+                loose.append(LooseNode(source=source_name, proxy=dict(proxy)))
+
+        reachable = _validate_subscriptions([url for url, _ in found], ctx)
+        return CrawlOutcome(
+            subscriptions=[(url, origin, reachable.get(url, False)) for url, origin in found],
+            loose=loose,
+        )
 
     # ---------- 拉取节点 ----------
-    def fetch(self, ctx: RunContext, subscriptions: list[str]) -> list[dict]:
+    def fetch(self, ctx: RunContext, subscriptions: list[str], loose: list["LooseNode"]) -> list[dict]:
+        """两路拉取：订阅 URL 解析（kind=sub）+ 散节点（kind=crawl，按源打标）。"""
         import executable
         import workflow
         from config.models import NodeInput
 
         _, subconverter_bin = executable.which_bin()
-        tasks = []
+        tasks: list[tuple[object, dict]] = []
         for index, url in enumerate(subscriptions):
-            tasks.append(
-                workflow.TaskConfig(
-                    name=f"sub-{index}",
-                    bin_name=subconverter_bin,
-                    taskid=index + 1,
-                    nodes=NodeInput(subscribe=url),
-                    index=-1,
-                    retry=2,
-                    max_rate=3.0,
-                )
+            task = workflow.TaskConfig(
+                name=f"sub-{index}",
+                bin_name=subconverter_bin,
+                taskid=index + 1,
+                nodes=NodeInput(subscribe=url),
+                index=-1,
+                retry=2,
+                max_rate=3.0,
             )
-        if not tasks:
-            return []
-        proxies: list[dict] = []
-        for task in tasks:
+            tasks.append((task, {"_kind": "sub", "_source_sub": url}))
+        by_source: dict[str, list[str]] = {}
+        for item in loose:
+            if item.uri:
+                by_source.setdefault(item.source, []).append(item.uri)
+        for source, uris in by_source.items():
+            task = workflow.TaskConfig(
+                name=f"crawl-{source}",
+                bin_name=subconverter_bin,
+                taskid=len(tasks) + 1,
+                nodes=NodeInput(uris=list(dict.fromkeys(uris))),
+                index=-1,
+                retry=2,
+                max_rate=3.0,
+            )
+            tasks.append((task, {"_kind": "crawl", "_source": source}))
+
+        proxies: list[dict] = [{**item.proxy, "_kind": "crawl", "_source": item.source} for item in loose if item.proxy]
+        for task, marker in tasks:
             if ctx.cancelled:
                 break
             try:
                 _taskid, items = workflow.executewrapper(task)
             except Exception as exc:  # noqa: BLE001 — 单个订阅失败不拖垮整轮
-                logger.warning(f"[WebEngine] fetch subscription failed, name={task.name}, error={exc}")
+                logger.warning(f"[WebEngine] fetch failed, name={task.name}, error={exc}")
                 continue
-            proxies.extend(items)
+            for item in items:
+                merged = dict(item)
+                merged.update(marker)
+                proxies.append(merged)
         return proxies
 
     # ---------- 验活 ----------
@@ -187,104 +231,176 @@ def _quoted_repr(dumper, data):
     return clash.quoted_scalar(dumper, data)
 
 
-def _crawl_config_dict(ctx: RunContext) -> tuple[dict, dict]:
-    """DB 源 + 参数 → (CrawlConfig 可解析字典, 凭证字典)。
+def _build_sections(ctx: RunContext) -> list[tuple[str, str, object, dict]]:
+    """DB 源 → 每个源的 (源名称, 渠道键, 渠道配置对象, 凭证字典)。
 
     凭证（github token/cookie、gist gh_cookie/token）由调用方注入环境变量；
-    gist 的 mode 决定频道读取哪个凭证（search 需要 cookie+token，timeline 用 token）。
+    gist 的 mode 决定读取哪个凭证（search 需要 cookie+token，timeline 用 token）。
     """
     import db
-    from models import CrawlSource, Setting
+    from config.models import (
+        GithubConfig,
+        GoogleConfig,
+        GistConfig,
+        PageJob,
+        RepoConfig,
+        ScriptJob,
+        TelegramChannelConfig,
+        TelegramConfig,
+        TaskParams,
+        YandexConfig,
+    )
+    from models import CrawlSource
 
     session = db.SessionLocal()
     try:
         sources = session.query(CrawlSource).filter_by(enable=True).all()
-        crawl_setting = (session.get(Setting, "crawl").value if session.get(Setting, "crawl") else {}) or {}
-        by_type: dict[str, list] = {}
-        for source in sources:
-            by_type.setdefault(source.type, []).append(source)
-        credentials: dict[str, str] = {}
-        config: dict = {
-            "enable": True,
-            "exclude": crawl_setting.get("exclude", ""),
-            "max_fails": int(crawl_setting.get("max_fails", 5)),
-            "include_nodes": bool(crawl_setting.get("include_nodes", True)),
-            "task": {"include": crawl_setting.get("include", ""), "exclude": crawl_setting.get("exclude_task", "")},
-        }
-        telegram = by_type.get("telegram") or []
-        if telegram:
-            channels = {}
-            for s in telegram:
-                cfg = dict(s.config or {})
-                task = {"include": cfg.get("include", ""), "exclude": cfg.get("exclude", "")}
-                if cfg.get("rename"):
-                    task["rename"] = cfg["rename"]
-                channels[s.name] = {
-                    "include": cfg.get("include", ""),
-                    "exclude": cfg.get("exclude", ""),
-                    # 引擎按 push_to 过滤频道；Web 模型无分组，注入占位分组使频道生效
-                    "push_to": [_GROUP_PLACEHOLDER],
-                    "task": task,
-                }
-            config["telegram"] = {"enable": True, "pages": telegram[0].config.get("pages", 5), "channels": channels}
-        github_rows = by_type.get("github") or []
-        if github_rows:
-            cfg = dict(github_rows[0].config or {})
-            config["github"] = {
-                "enable": True,
-                "pages": cfg.get("pages", 2),
-                "exclude": cfg.get("exclude", ""),
-                "exclude_repos": cfg.get("exclude_repos", []),
-                "patterns": cfg.get("patterns", []),
-            }
-            for key, value in (("token", "GH_TOKEN"), ("cookie", "GH_COOKIE")):
-                if cfg.get(key):
-                    credentials[value] = cfg[key]
-        gist_rows = by_type.get("gist") or []
-        if gist_rows:
-            cfg = dict(gist_rows[0].config or {})
-            mode = cfg.get("mode", "timeline")
-            config["gist"] = {
-                "enable": True,
-                "include": cfg.get("include", ""),
-                "exclude": cfg.get("exclude", ""),
-                "exclude_owners": cfg.get("exclude_owners", []),
-                "max_gists": cfg.get("max_gists", 100),
-                "max_filesize": cfg.get("max_filesize", 65536),
-                "patterns": cfg.get("patterns", []),
-                "pages": cfg.get("pages", 2),
-            }
-            if mode == "search":
-                # 搜索模式：频道按 GH_COOKIE 是否存在切换 search/timeline
-                if cfg.get("gh_cookie"):
-                    credentials["GH_COOKIE"] = cfg["gh_cookie"]
-                if cfg.get("token"):
-                    credentials["GH_TOKEN"] = cfg["token"]
-            elif cfg.get("token"):
-                credentials.setdefault("GH_TOKEN", cfg["token"])
-        for key in ("google", "yandex"):
-            rows = by_type.get(key) or []
-            if rows:
-                config[key] = {"enable": True, **{k: v for k, v in rows[0].config.items() if k not in ("token", "cookie")}}
-        pages = by_type.get("page") or []
-        if pages:
-            config["pages"] = [
-                {k: v for k, v in (s.config or {}).items() if k not in ("token", "cookie")} | {"enable": True}
-                for s in pages
-            ]
-        repos = by_type.get("repo") or []
-        if repos:
-            config["repositories"] = [dict(s.config or {}) for s in repos]
-        scripts = by_type.get("script") or []
-        if scripts:
-            config["scripts"] = [{**dict(s.config or {}), "enable": True} for s in scripts]
-        project_setting = (session.get(Setting, "proxy").value if session.get(Setting, "proxy") else {}) or {}
-        config["proxy"] = dict(project_setting)
-        return config, credentials
+        if ctx.source_ids:
+            wanted = {int(x) for x in ctx.source_ids}
+            sources = [s for s in sources if s.id in wanted]
     finally:
         session.close()
 
+    sections: list[tuple[str, str, object, dict]] = []
+    for source in sources:
+        cfg = dict(source.config or {})
+        if source.type == "telegram":
+            section = TelegramConfig(
+                enable=True,
+                pages=int(cfg.get("pages", 5)),
+                exclude="",
+                channels={
+                    source.name: TelegramChannelConfig(
+                        include=cfg.get("include", ""),
+                        exclude=cfg.get("exclude", ""),
+                        push_to=[_GROUP_PLACEHOLDER],
+                        task=TaskParams(include="", exclude="", rename=cfg.get("rename", "")),
+                    )
+                },
+            )
+            sections.append((source.name, "telegram", section, {}))
+        elif source.type == "github":
+            section = GithubConfig(
+                enable=True,
+                pages=int(cfg.get("pages", 2)),
+                push_to=[_GROUP_PLACEHOLDER],
+                exclude=cfg.get("exclude", ""),
+                exclude_repos=list(cfg.get("exclude_repos", [])),
+                patterns=list(cfg.get("patterns", [])),
+            )
+            creds = {}
+            if cfg.get("token"):
+                creds["GH_TOKEN"] = cfg["token"]
+            if cfg.get("cookie"):
+                creds["GH_COOKIE"] = cfg["cookie"]
+            sections.append((source.name, "github", section, creds))
+        elif source.type == "gist":
+            mode = cfg.get("mode", "timeline")
+            section = GistConfig(
+                enable=True,
+                push_to=[_GROUP_PLACEHOLDER],
+                include=cfg.get("include", ""),
+                exclude=cfg.get("exclude", ""),
+                exclude_owners=list(cfg.get("exclude_owners", [])),
+                max_gists=int(cfg.get("max_gists", 100)),
+                max_filesize=int(cfg.get("max_filesize", 65536)),
+                patterns=list(cfg.get("patterns", [])),
+                pages=int(cfg.get("pages", 2)),
+            )
+            creds = {}
+            if mode == "search" and cfg.get("gh_cookie"):
+                # 渠道以 GH_COOKIE 是否存在切换 search/timeline
+                creds["GH_COOKIE"] = cfg["gh_cookie"]
+            if cfg.get("token"):
+                creds.setdefault("GH_TOKEN", cfg["token"])
+            sections.append((source.name, "gist", section, creds))
+        elif source.type == "google":
+            section = GoogleConfig(
+                enable=True,
+                push_to=[_GROUP_PLACEHOLDER],
+                exclude=cfg.get("exclude", ""),
+                limit=int(cfg.get("limit", 100)),
+                days=int(cfg.get("days", 7)),
+                exclude_sites=list(cfg.get("exclude_sites", [])),
+            )
+            sections.append((source.name, "google", section, {}))
+        elif source.type == "yandex":
+            section = YandexConfig(
+                enable=True,
+                push_to=[_GROUP_PLACEHOLDER],
+                exclude=cfg.get("exclude", ""),
+                days=int(cfg.get("days", 3)),
+                pages=int(cfg.get("pages", 5)),
+                exclude_sites=list(cfg.get("exclude_sites", [])),
+            )
+            sections.append((source.name, "yandex", section, {}))
+        elif source.type == "page":
+            # page 渠道接收 list[PageJob]（与引擎 run() 一致）
+            section = [
+                PageJob(
+                    url=list(cfg.get("url", [])),
+                    enable=True,
+                    paged=bool(cfg.get("paged", False)),
+                    placeholder=cfg.get("placeholder", "{page}"),
+                    start=int(cfg.get("start", 1)),
+                    end=int(cfg.get("end", 5)),
+                    headers=cfg.get("headers") or None,
+                    push_to=[_GROUP_PLACEHOLDER],
+                )
+            ]
+            sections.append((source.name, "pages", section, {}))
+        elif source.type == "repo":
+            # repository 渠道接收 list[RepoConfig]
+            section = [
+                RepoConfig(
+                    enable=True,
+                    username=cfg.get("username", ""),
+                    repo=cfg.get("repo", ""),
+                    commits=int(cfg.get("commits", 3)),
+                    push_to=[_GROUP_PLACEHOLDER],
+                    exclude=cfg.get("exclude", ""),
+                )
+            ]
+            sections.append((source.name, "repositories", section, {}))
+        elif source.type == "script":
+            if not cfg.get("plugin"):
+                continue
+            options = cfg.get("options") or {}
+            # script 渠道接收 list[ScriptJob]
+            section = [
+                ScriptJob(
+                    plugin=cfg["plugin"],
+                    enable=True,
+                    persist=cfg.get("persist"),
+                    options=dict(options) if isinstance(options, dict) else {},
+                )
+            ]
+            sections.append((source.name, "scripts", section, {}))
+    return sections
 
+
+def _validate_subscriptions(urls: list[str], ctx: RunContext) -> dict[str, bool]:
+    """并发探测订阅可达性（复用引擎的 check_status）。"""
+    from functools import partial
+
+    import utils
+    from crawl.helpers import check_status
+
+    if not urls:
+        return {}
+    masks = utils.multi_thread_run(
+        func=partial(check_status, proxy=""),
+        tasks=[[url, 2, 5, 12, 72] for url in urls],
+        num_threads=int(ctx.params.get("num_threads", 32)),
+        show_progress=False,
+    )
+    reachable: dict[str, bool] = {}
+    for url, mask in zip(urls, masks):
+        ok = False
+        if isinstance(mask, tuple) and len(mask) >= 1:
+            ok = bool(mask[0])
+        reachable[url] = ok
+    return reachable
 class _env_scope:
     """临时注入环境变量，退出时还原（线程内串行使用）。"""
 

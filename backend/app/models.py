@@ -85,6 +85,7 @@ class Subscription(Base):
     first_seen_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     last_seen_at: Mapped[datetime] = mapped_column(DateTime, default=_now)
     last_alive_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    node_count: Mapped[int] = mapped_column(Integer, default=0)  # 最近一次状态测试的节点数
 
 
 class Node(Base):
@@ -96,6 +97,8 @@ class Node(Base):
     protocol: Mapped[str] = mapped_column(String(16), index=True)
     server: Mapped[str] = mapped_column(String(255))
     port: Mapped[int] = mapped_column(Integer)
+    kind: Mapped[str] = mapped_column(String(16), default="sub", index=True)  # crawl=爬取散节点 sub=订阅解析节点
+    source: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)  # 爬取源名称（TG 为频道名）
     source_sub: Mapped[str | None] = mapped_column(String(1024), nullable=True, index=True)
     delay_ms: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
     region: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)

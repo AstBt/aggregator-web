@@ -306,3 +306,79 @@ class TestRemotePublish:
         session.commit()
         assert pending == []
         assert not (tmp_path / "out" / "v2ray.txt").exists()  # 空产物不落盘
+
+
+class TestPersistSubscriptions:
+    def test_unreachable_new_subscription_increments_errors(self, db_session):
+        """混合可达/不可达订阅入库：不可达新行 errors 从 0 起算（曾因 None+1 崩溃）。"""
+        from datetime import datetime
+
+        from engine_adapter.runner import _persist_subscriptions
+        from models import CrawlRun, Subscription
+
+        run = CrawlRun(run_uuid="persist-1", trigger="manual", mode="crawl", status="running")
+        db_session.add(run)
+        db_session.flush()
+        _persist_subscriptions(
+            db_session,
+            run.id,
+            [
+                ("https://alive.example.com/a", "TELEGRAM", True),
+                ("https://dead.example.com/b", "PAGE", False),
+            ],
+        )
+        alive = db_session.query(Subscription).filter_by(url="https://alive.example.com/a").first()
+        dead = db_session.query(Subscription).filter_by(url="https://dead.example.com/b").first()
+        assert alive.status == "alive" and alive.errors == 0
+        assert dead.status == "pending" and dead.errors == 1
+        # 再次入库不可达订阅：errors 累加
+        _persist_subscriptions(db_session, run.id, [("https://dead.example.com/b", "PAGE", False)])
+        assert dead.errors == 2
+
+
+class TestPersistRobustness:
+    def test_batch_dedup_same_url_with_reachable_priority(self, db_session):
+        """同一 url 在一批内重复出现（跨源命中）：去重且可达状态优先，不触发唯一约束。"""
+        from engine_adapter.runner import _persist_subscriptions
+        from models import CrawlRun, Subscription
+
+        run = CrawlRun(run_uuid="persist-2", trigger="manual", mode="crawl", status="running")
+        db_session.add(run)
+        db_session.flush()
+        _persist_subscriptions(
+            db_session,
+            run.id,
+            [
+                ("https://dup.example.com/a", "TELEGRAM", False),
+                ("https://dup.example.com/a", "GITHUB", True),
+            ],
+        )
+        rows = db_session.query(Subscription).filter_by(url="https://dup.example.com/a").all()
+        assert len(rows) == 1
+        assert rows[0].status == "alive"
+        assert rows[0].errors == 0
+
+    def test_safe_execute_marks_failed_even_if_logging_fails(self, db_session):
+        """异常路径健壮性：即使日志写入失败，run 也必须落终态、锁必须释放（曾卡 running）。"""
+        from unittest.mock import patch
+
+        from engine_adapter.runner import TaskRunner
+        from models import CrawlRun
+
+        run = TaskRunner.instance()
+        session = db_session
+        run.create(session, mode="crawl", params={}, source_ids=[], bind_target_ids=[], actor_id=None)
+        # 直接驱动 _safe_execute：_execute 抛错 + log 也抛错，仍应标记 failed 并释放锁
+        target = session.query(CrawlRun).order_by(CrawlRun.id.desc()).first()
+
+        def boom(_self, _s, _r):
+            raise RuntimeError("engine exploded")
+
+        with patch.object(type(run), "_execute", boom), \
+             patch("engine_adapter.log_hub.log", side_effect=RuntimeError("log also broken")):
+            run._safe_execute(target.id)
+        session.expire_all()
+        refreshed = session.get(CrawlRun, target.id)
+        assert refreshed.status == "failed"
+        assert "engine exploded" in (refreshed.error or "")
+        assert run.running_id is None

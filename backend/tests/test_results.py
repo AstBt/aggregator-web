@@ -42,20 +42,24 @@ def seeded_run(client, admin_token, operator_token, db_session, tmp_path):
     db_session.add_all(subs)
     nodes = [
         Node(run_id=run.id, name="🚀 香港01", protocol="vless", server="hk01.example.com", port=443,
-             source_sub=subs[0].url, delay_ms=180, region="香港", residential=False, alive=True,
+             kind="crawl", source="oneclickvpnkeys", delay_ms=180, region="香港", residential=False, alive=True,
              raw={"type": "vless", "uuid": "e5f3-a91c", "network": "ws", "tls": True}),
         Node(run_id=run.id, name="🚀 新加坡02", protocol="vmess", server="sg02.example.net", port=80,
-             source_sub=subs[0].url, delay_ms=460, region="新加坡", residential=False, alive=True,
+             kind="crawl", source="oneclickvpnkeys", delay_ms=460, region="新加坡", residential=False, alive=True,
              raw={"type": "vmess", "uuid": "7b2c-11f0", "alterId": 0}),
         Node(run_id=run.id, name="🚀 香港04", protocol="hysteria2", server="hk04.example.io", port=36712,
-             source_sub=subs[1].url, delay_ms=167, region="香港", residential=True, alive=True,
+             kind="crawl", source="github-search", delay_ms=167, region="香港", residential=True, alive=True,
              raw={"type": "hysteria2", "password": "s3cret", "sni": "hk04.example.io"}),
         Node(run_id=run.id, name="🚀 美国05", protocol="ss", server="us05.example.com", port=8388,
-             source_sub=subs[1].url, delay_ms=920, region="美国", residential=True, alive=True,
+             kind="crawl", source="github-search", delay_ms=920, region="美国", residential=True, alive=True,
              raw={"type": "ss", "cipher": "aes-128-gcm", "password": "pw"}),
     ]
     db_session.add_all(nodes)
     db_session.add(Artifact(run_id=run.id, target="clash", path=str(tmp_path / "local" / "clash.yaml"), size=1024))
+    # 订阅解析节点（与散节点独立，供订阅详情的贡献计数）
+    db_session.add(Node(run_id=run.id, name="sub-香港01", protocol="vless", server="sub1.example.com", port=443,
+                        kind="sub", source_sub=subs[0].url, delay_ms=190, region="香港", alive=True,
+                        raw={"type": "vless", "uuid": "sub-1111"}))
     db_session.commit()
     return {"run_id": run.id, "target_id": target.id, "node_ids": [n.id for n in nodes]}
 
@@ -140,6 +144,7 @@ class TestExport:
         from models import Node
 
         db_session.add(Node(run_id=seeded_run["run_id"], name="☠️ 死节点", protocol="vless",
+                            kind="crawl", source="oneclickvpnkeys",
                             server="dead.example.com", port=443, alive=False, raw={"type": "vless"}))
         db_session.commit()
         default = client.post(

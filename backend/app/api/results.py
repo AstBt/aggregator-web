@@ -63,6 +63,40 @@ def subscription_detail(
     return _subscription_item(row, contributed or 0, detail=True)
 
 
+@router.get("/api/subscriptions/{sub_id}/nodes")
+def subscription_nodes(
+    sub_id: int,
+    page: int = Query(1, ge=1),
+    page_size: int = Query(50, ge=1, le=200),
+    _: User = Depends(require_role("viewer")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """订阅解析出的节点（与「节点浏览」的散节点相互独立）。"""
+    row = db.get(Subscription, sub_id)
+    if row is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "订阅不存在")
+    stmt = select(Node).where(Node.kind == "sub", Node.source_sub == row.url)
+    total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+    rows = db.scalars(stmt.order_by(Node.id).offset((page - 1) * page_size).limit(page_size)).all()
+    return {"total": total, "items": [_node_item(r) for r in rows]}
+
+
+@router.post("/api/subscriptions/test")
+def subscriptions_test(
+    body: "SubscriptionTestIn",
+    _: User = Depends(require_role("operator")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """测试订阅状态（勾选或全部）：可达性 + 节点数，更新状态。"""
+    from services import test_service
+
+    try:
+        job = test_service.test_subscriptions(ids=body.ids or None)
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"job_id": job.job_id, "total": job.total}
+
+
 def _subscription_item(row: Subscription, contributed: int, detail: bool = False) -> dict:
     item = {
         "id": row.id,
@@ -77,6 +111,7 @@ def _subscription_item(row: Subscription, contributed: int, detail: bool = False
         "last_seen_at": row.last_seen_at.isoformat() if row.last_seen_at else None,
         "last_alive_at": row.last_alive_at.isoformat() if row.last_alive_at else None,
         "contributed_nodes": contributed,
+        "node_count": row.node_count,
     }
     return item
 
@@ -89,6 +124,8 @@ def _node_item(row: Node) -> dict:
         "protocol": row.protocol,
         "server": row.server,
         "port": row.port,
+        "kind": row.kind,
+        "source": row.source,
         "source_sub": row.source_sub,
         "delay_ms": row.delay_ms,
         "region": row.region,
@@ -109,12 +146,15 @@ def list_nodes(
     max_delay: int | None = None,
     keyword: str | None = None,
     run_id: int | None = None,
+    kind: str = "crawl",
+    source: str | None = None,
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=200),
     _: User = Depends(require_role("viewer")),
     db: Session = Depends(get_db),
 ) -> dict:
-    stmt = select(Node)
+    """节点列表：默认仅散节点（kind=crawl，爬取直接获得）；订阅解析节点经订阅详情查看。"""
+    stmt = select(Node).where(Node.kind == kind)
     if protocol:
         stmt = stmt.where(Node.protocol == protocol)
     if region:
@@ -129,6 +169,8 @@ def list_nodes(
         stmt = stmt.where(Node.delay_ms <= max_delay)
     if keyword:
         stmt = stmt.where(Node.name.like(f"%{keyword}%"))
+    if source:
+        stmt = stmt.where(Node.source == source)
     if run_id is not None:
         stmt = stmt.where(Node.run_id == run_id)
     else:
@@ -138,6 +180,48 @@ def list_nodes(
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(Node.id).offset((page - 1) * page_size).limit(page_size)).all()
     return {"total": total, "items": [_node_item(r) for r in rows]}
+
+
+@router.post("/api/nodes/test")
+def nodes_test(
+    body: "NodeTestIn",
+    _: User = Depends(require_role("operator")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """测试节点状态（勾选或全部散节点）：验活 + 地区/住宅更新。"""
+    from services import test_service
+
+    try:
+        job = test_service.test_nodes(
+            ids=body.ids or None,
+            locate=body.locate,
+            residential=body.residential,
+            params=body.params or {},
+        )
+    except ValueError as exc:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, str(exc)) from exc
+    return {"job_id": job.job_id, "total": job.total}
+
+
+@router.get("/api/test-jobs")
+def list_test_jobs(
+    _: User = Depends(require_role("viewer")),
+) -> dict:
+    from services import test_service
+
+    return {
+        "items": [
+            {
+                "job_id": j.job_id,
+                "kind": j.kind,
+                "total": j.total,
+                "done": j.done,
+                "status": j.status,
+                "message": j.message,
+            }
+            for j in test_service.hub.list()
+        ]
+    }
 
 
 @router.get("/api/nodes/{node_id}")
@@ -157,6 +241,18 @@ class ExportIn(BaseModel):
     run_id: int | None = None
     only_alive: bool = True
     protocols: list[str] | None = None
+    kind: str = "crawl"
+
+
+class NodeTestIn(BaseModel):
+    ids: list[int] | None = None
+    locate: bool = True
+    residential: bool = True
+    params: dict = {}
+
+
+class SubscriptionTestIn(BaseModel):
+    ids: list[int] | None = None
 
 
 @router.post("/api/nodes/export")
@@ -168,7 +264,7 @@ def export_nodes(
     """按客户端类型导出（FR-5.5）：默认仅存活节点；成功写入导出历史（FR-5.6）。"""
     if body.target not in export_service.TARGETS:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, f"不支持的客户端类型: {body.target}")
-    stmt = select(Node)
+    stmt = select(Node).where(Node.kind == body.kind)
     if body.only_alive:
         stmt = stmt.where(Node.alive.is_(True))
     if body.protocols:
