@@ -268,7 +268,9 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .log-line .lv-ERROR{color:#f87171;flex:none;width:56px}
 .log-line .lv-DEBUG{color:#8b9bb8;flex:none;width:56px}
 .log-line .msg{color:#c9d4e6}
+.run-meta{display:flex;gap:10px;flex-wrap:wrap;margin:12px 0 4px}
 .log-ctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.param-list{font-size:13px}
 
 /* ---------- 页脚 / 空态 ---------- */
 .empty-tip{padding:36px;text-align:center;color:var(--text-3);font-size:13px}

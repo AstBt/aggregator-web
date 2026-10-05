@@ -106,6 +106,25 @@ class TestNodes:
         detail = client.get(f"/api/nodes/{item['id']}", headers=auth_header(operator_token)).json()["data"]
         assert detail["raw"]["cipher"] == "aes-128-gcm"
 
+    def test_nodes_list_spans_runs(self, client, operator_token, seeded_run, db_session):
+        """节点浏览关联系统库全部轮次散节点（不再隐性限定最新一轮）。"""
+        from datetime import datetime
+
+        from models import CrawlRun, Node
+
+        run2 = CrawlRun(run_uuid="seed-run-0002", trigger="manual", mode="crawl", status="success",
+                        stage="done", params={}, stats={}, started_at=datetime.now(), finished_at=datetime.now())
+        db_session.add(run2)
+        db_session.flush()
+        db_session.add(Node(run_id=run2.id, name="🚀 日本09", protocol="vless", server="jp09.example.com",
+                            port=443, kind="crawl", source="gist-main", delay_ms=240, alive=True, raw={}))
+        db_session.commit()
+        res = client.get("/api/nodes?kind=crawl", headers=auth_header(operator_token)).json()["data"]
+        assert res["total"] == 5
+        assert any(n["server"] == "jp09.example.com" for n in res["items"])
+        scoped = client.get(f"/api/nodes?kind=crawl&run_id={run2.id}", headers=auth_header(operator_token)).json()["data"]
+        assert scoped["total"] == 1
+
 
 class TestExport:
     def test_clash_export_yaml(self, client, operator_token, seeded_run):

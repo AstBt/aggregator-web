@@ -77,6 +77,30 @@ class TestRunLifecycle:
         assert data["stats"]["subs_alive"] == 1
         assert data["stage"] == "done"
 
+    def test_crawl_stats_count_unique_subscriptions(self, client, operator_token, monkeypatch):
+        """订阅统计按 URL 去重后计数，与订阅池条数一致（跨源重复命中只算一次）。"""
+        from engine_adapter import runner as runner_module
+
+        engine = runner_module.HermeticEngine(
+            subscriptions=[
+                ("https://dup.example.com/a", "PAGE", True),
+                ("https://dup.example.com/a", "GITHUB", True),
+                ("https://uniq.example.com/b", "PAGE", False),
+            ],
+            proxies=[],
+        )
+        previous = runner_module.TaskRunner.instance().engine
+        runner_module.TaskRunner.instance().engine = engine
+        try:
+            run_id = client.post(
+                "/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)
+            ).json()["data"]["id"]
+            data = _wait_run(client, operator_token, run_id)
+        finally:
+            runner_module.TaskRunner.instance().engine = previous
+        assert data["stats"]["subs_total"] == 2
+        assert data["stats"]["subs_alive"] == 1
+
     def test_full_run_publishes_to_bound_targets(self, client, operator_token, fake_engine, db_session, tmp_path):
         from models import StorageTarget
 

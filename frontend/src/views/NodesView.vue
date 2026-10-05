@@ -1,7 +1,7 @@
 <template>
   <div>
     <div class="mini-stats">
-      <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">🌐</span><div><div class="v">{{ stats.total }}</div><div class="k">散节点（{{ runLabel }}）</div></div></div>
+      <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">🌐</span><div><div class="v">{{ stats.alive }}</div><div class="k">存活散节点（系统库 {{ stats.total }}）</div></div></div>
       <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">⚡</span><div><div class="v">{{ stats.avg }}ms</div><div class="k">平均延迟</div></div></div>
       <div class="mini"><span class="m-ico" style="background:#e6fffb;color:#08979c">🏠</span><div><div class="v">{{ stats.residential }}</div><div class="k">住宅 IP 节点</div></div></div>
       <div class="mini"><span class="m-ico" style="background:#f9f0ff;color:#722ed1">🧩</span><div><div class="v">{{ sources.length }}</div><div class="k">贡献爬取源</div></div></div>
@@ -28,7 +28,7 @@
         <div style="display:flex;gap:8px">
           <button class="btn sm" @click="downloadCsv('nodes')">⤓ CSV</button>
           <button class="btn sm primary" :disabled="testing" @click="onTestStatus">
-            <span v-if="testing" class="spin-mini"></span>{{ testing ? `测试中 ${testDone}/${testTotal}` : '📶 测试节点状态' }}
+            <span v-if="testing" class="spin-mini"></span>{{ testing ? `测试中 ${testDone}/${testTotal}${testPhase ? ' · ' + testPhase : ''}` : '📶 测试节点状态' }}
           </button>
           <button class="btn sm primary" @click="exportOpen = true; loadExportHistory()">⤒ 导出客户端配置</button>
         </div>
@@ -70,7 +70,7 @@
               <td><b>{{ n.name }}</b></td>
               <td><span class="proto" :class="n.protocol">{{ n.protocol.toUpperCase() }}</span></td>
               <td class="mono">{{ n.server }}:{{ n.port }}</td>
-              <td><span class="delay" :class="n.delay_ms < 300 ? 'g' : n.delay_ms < 800 ? 'y' : 'r'">{{ n.delay_ms ?? '—' }}ms</span></td>
+              <td><span class="delay" :class="delayClass(n.delay_ms)">{{ n.delay_ms ?? '—' }}ms</span></td>
               <td>{{ n.region || '—' }}</td>
               <td><span v-if="n.residential" class="tag ok" style="line-height:18px">住宅</span><span v-else class="muted">—</span></td>
               <td><span class="tag gray plain">{{ n.source || '—' }}</span></td>
@@ -157,11 +157,11 @@ const rows = ref([]);
 const total = ref(0);
 const detail = ref(null);
 const artifacts = ref([]);
-const runLabel = ref('最新轮次');
 const sources = ref([]);
 const checked = ref({});
 const allChecked = ref(false);
 const testing = ref(false);
+const testPhase = ref('');
 const testDone = ref(0);
 const testTotal = ref(0);
 const exportOpen = ref(false);
@@ -169,12 +169,14 @@ const exporting = ref(false);
 const exportHistory = ref([]);
 const exportForm = reactive({ target: 'clash', only_alive: true });
 const filters = reactive({ protocol: '', source: '', region: '', alive: '', delayBand: '', keyword: '' });
-const stats = reactive({ total: 0, avg: 0, residential: 0 });
+const stats = reactive({ total: 0, alive: 0, avg: 0, residential: 0 });
 const selectedCount = computed(() => Object.values(checked.value).filter(Boolean).length);
 const ext = computed(() => ({ clash: 'clash.yaml', v2ray: 'v2ray.txt', singbox: 'singbox.json' }[exportForm.target]));
+const PHASE_LABELS = { delay: '测速', locate: '定位' };
 
 const targetIcon = (t) => ({ clash: '📕', v2ray: '📗', singbox: '📘' }[t] || '📄');
 const targetBg = (t) => ({ clash: '#e6f4ff', v2ray: '#f6ffed', singbox: '#f9f0ff' }[t] || '#f5f5f5');
+const delayClass = (ms) => (ms == null ? '' : ms < 300 ? 'g' : ms < 800 ? 'y' : 'r');
 
 async function load() {
   const base = { ...filters, page_size: 50 };
@@ -193,13 +195,15 @@ async function load() {
 }
 async function loadMeta() {
   const overview = await dashboardApi.overview();
-  stats.total = overview.nodes_alive;
-  stats.avg = overview.avg_delay_ms;
-  stats.residential = overview.residential_count;
-  if (overview.latest_run_id) {
-    runLabel.value = '#' + overview.latest_run_id;
-    artifacts.value = (await tasksApi.artifacts(overview.latest_run_id)).items;
-  }
+  // 汇总口径与列表一致：系统库中的散节点（kind=crawl），不关联单一任务轮次
+  const loose = overview.loose || { total: 0, alive: 0, avg_delay_ms: 0, residential: 0, sources: [] };
+  stats.total = loose.total;
+  stats.alive = loose.alive;
+  stats.avg = loose.avg_delay_ms;
+  stats.residential = loose.residential;
+  sources.value = [...new Set([...sources.value, ...loose.sources])].sort();
+  const latestRun = overview.recent_runs?.[0]?.id;
+  if (latestRun) artifacts.value = (await tasksApi.artifacts(latestRun)).items;
 }
 function reset() { Object.assign(filters, { protocol: '', source: '', region: '', alive: '', delayBand: '', keyword: '' }); load(); }
 function toggleAll() { rows.value.forEach((r) => (checked.value[r.id] = allChecked.value)); }
@@ -207,6 +211,7 @@ function toggleAll() { rows.value.forEach((r) => (checked.value[r.id] = allCheck
 async function onTestStatus() {
   const ids = Object.entries(checked.value).filter(([, v]) => v).map(([k]) => Number(k));
   testing.value = true;
+  testPhase.value = '';
   try {
     const res = await resultsApi.testNodes({ ids, locate: true, residential: true });
     testTotal.value = res.total;
@@ -225,6 +230,7 @@ async function pollJob(jobId) {
       if (job) {
         testDone.value = job.done;
         testTotal.value = job.total;
+        testPhase.value = PHASE_LABELS[job.phase] || '';
         if (job.status === 'success' || job.status === 'failed') {
           clearInterval(timer);
           testing.value = false;

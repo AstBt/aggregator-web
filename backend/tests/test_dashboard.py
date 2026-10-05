@@ -39,6 +39,27 @@ def seeded(client, admin_token, db_session):
     db_session.commit()
 
 
+@pytest.fixture()
+def crawl_seeded(client, admin_token, db_session):
+    """散节点（kind=crawl）与订阅节点混合，用于校验 loose 汇总口径。"""
+    from models import CrawlRun, Node
+
+    run = CrawlRun(run_uuid="dash-loose", trigger="manual", mode="full", status="success", stage="done",
+                   stats={}, started_at=datetime.now(), finished_at=datetime.now(), duration_ms=100)
+    db_session.add(run)
+    db_session.flush()
+    db_session.add_all([
+        Node(run_id=run.id, name="loose-alive", protocol="vless", server="s1", port=443, delay_ms=120,
+             region="香港", residential=True, alive=True, kind="crawl", source="github-search", raw={}),
+        Node(run_id=run.id, name="loose-dead", protocol="vmess", server="s2", port=80, delay_ms=None,
+             alive=False, kind="crawl", source="oneclickvpnkeys", raw={}),
+        Node(run_id=run.id, name="sub-only", protocol="vless", server="s3", port=443, delay_ms=90,
+             region="美国", residential=True, alive=True, kind="sub",
+             source_sub="https://a.example.com/x", raw={}),
+    ])
+    db_session.commit()
+
+
 class TestDashboard:
     def test_overview_metrics(self, client, admin_token, seeded):
         data = client.get("/api/dashboard/overview", headers=auth_header(admin_token)).json()["data"]
@@ -74,6 +95,16 @@ class TestDashboard:
         )
         data = client.get("/api/dashboard/overview", headers=auth_header(admin_token)).json()["data"]
         assert any(s["type"] == "telegram" for s in data["source_health"])
+
+    def test_loose_stats_cover_crawl_nodes_only(self, client, admin_token, crawl_seeded):
+        """节点浏览顶部汇总口径：仅散节点（kind=crawl），与订阅解析节点无关。"""
+        data = client.get("/api/dashboard/overview", headers=auth_header(admin_token)).json()["data"]
+        loose = data["loose"]
+        assert loose["total"] == 2
+        assert loose["alive"] == 1
+        assert loose["avg_delay_ms"] == 120
+        assert loose["residential"] == 1
+        assert set(loose["sources"]) == {"github-search", "oneclickvpnkeys"}
 
     def test_viewer_can_read(self, client, admin_token, seeded):
         client.post(

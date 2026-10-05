@@ -434,8 +434,13 @@ def _persist_artifacts(session: Session, run_id: int, artifacts: list[dict]) -> 
 def _stats(mode: str, outcome: EngineOutcome) -> dict:
     stats: dict = {}
     if mode in ("crawl", "full"):
-        stats["subs_total"] = len(outcome.subscriptions)
-        stats["subs_alive"] = sum(1 for _u, _o, ok in outcome.subscriptions if ok)
+        # 按 URL 去重后计数：与订阅池入库口径一致（跨源重复命中只算一条）
+        unique_urls = {(url or "").strip() for url, _origin, _ok in outcome.subscriptions if (url or "").strip()}
+        stats["subs_total"] = len(unique_urls)
+        alive_urls = {
+            (url or "").strip() for url, _origin, ok in outcome.subscriptions if ok and (url or "").strip()
+        }
+        stats["subs_alive"] = len(alive_urls)
     if mode in ("aggregate", "full"):
         stats["nodes_total"] = len(outcome.proxies)
         stats["nodes_alive"] = len(outcome.alive)

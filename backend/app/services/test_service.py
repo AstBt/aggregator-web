@@ -2,8 +2,8 @@
 """状态测试服务：订阅并发探测 + 节点验活（结果板块「测试状态」按钮）。
 
 - 订阅测试：check_status 可达性 + 节点数计数（不落节点表，只更新状态与计数）
-- 节点测试：自管 mihomo 控制器查询延迟/存活，并按需做 mmdb 地区与住宅判定；
-  不重命名节点（区别于引擎管线的 location.regularize）
+- 节点测试：自管 mihomo 控制器并发查询延迟；地区/住宅经引擎同源的
+  location.batch_query（每节点独立监听端口）完成，避免经默认出口误判
 - 测试任务为进程内注册表（单实例、可查询进度），与 TaskRunner 的长任务互不阻塞
 """
 
@@ -17,8 +17,10 @@ import threading
 import urllib.parse
 import urllib.request
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 
 import db
@@ -27,7 +29,13 @@ from sqlalchemy import select
 
 PROJECT_DIR = Path(__file__).resolve().parents[3]
 CLASH_DIR = PROJECT_DIR / "clash"
-TERMINAL = ("success", "failed")
+
+# 节点测试阶段（前端映射为中文标签展示）
+PHASE_DELAY = "delay"
+PHASE_LOCATE = "locate"
+
+DEFAULT_TEST_URL = "https://www.google.com/generate_204"
+DEFAULT_PARAMS = {"num_threads": 16, "max_delay": 5000, "timeout": 5000, "test_url": DEFAULT_TEST_URL}
 
 
 @dataclass
@@ -38,6 +46,7 @@ class TestJob:
     done: int = 0
     status: str = "running"  # running / success / failed
     message: str = ""
+    phase: str = ""  # 节点测试当前阶段（delay / locate），订阅测试为空
     created_at: datetime = field(default_factory=datetime.now)
 
 
@@ -69,6 +78,14 @@ class TestHub:
             if job:
                 job.done = min(job.total, job.done + n)
 
+    def begin_phase(self, job_id: str, phase: str) -> None:
+        """进入新阶段：重置进度并更新阶段标签（节点测试测速/定位分段展示）。"""
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if job:
+                job.phase = phase
+                job.done = 0
+
     def finish(self, job_id: str, status: str, message: str = "") -> None:
         with self._lock:
             job = self._jobs.get(job_id)
@@ -79,6 +96,31 @@ class TestHub:
 
 
 hub = TestHub()
+
+
+def _resolve_params(params: dict | None) -> dict:
+    """测试参数：显式传值优先，缺省取「验活参数」页设置（与任务执行同源）。"""
+    merged = dict(DEFAULT_PARAMS)
+    try:
+        session = db.SessionLocal()
+        try:
+            from services import settings_service
+
+            alive = settings_service.get_alive(session)
+        finally:
+            session.close()
+        for key in ("num_threads", "max_delay", "timeout"):
+            if alive.get(key):
+                merged[key] = int(alive[key])
+        url = alive.get("primary_test_url") or (alive.get("test_urls") or [None])[0]
+        if url:
+            merged["test_url"] = str(url)
+    except Exception:  # noqa: BLE001 — 设置缺失时退回内置默认值
+        pass
+    for key, value in (params or {}).items():
+        if value is not None:
+            merged[key] = value
+    return merged
 
 
 # ---------- 订阅测试 ----------
@@ -188,9 +230,8 @@ def mark_testing(ids: list[int]) -> None:
 def _check_alive(proxies: list[dict], **kwargs) -> dict:
     """对节点跑 mihomo 延迟探测，返回 {node_key: delay_ms}（不含测试替身逻辑）。
 
-    与 pipeline.check_alive_proxies 的区别：后者只返回存活列表、不回传实测延迟；
-    这里复用它同源的控制器装配（clash.generate_config + 独立端口），逐节点查询
-    延迟端点，用于「测试节点状态」后的状态更新。
+    与 pipeline.check_alive_proxies 同源：独立控制器 + 并发查询延迟端点，
+    但这里回传实测延迟值供「测试节点状态」落库（后者只返回存活列表）。
     """
     import sys
 
@@ -211,11 +252,26 @@ def _check_alive(proxies: list[dict], **kwargs) -> dict:
         controller = f"127.0.0.1:{listener.getsockname()[1]}"
 
     delay_limit = int(kwargs.get("max_delay", 5000))
+    query_timeout = max(2, int(kwargs.get("timeout", 5000)) / 1000 + 2)
     process = None
     with tempfile.TemporaryDirectory(prefix="agg-nodetest-") as directory:
         candidates = clash.generate_config(
             directory, [dict(p) for p in proxies], "config.yaml", controller=controller
         )
+
+        def probe(item: dict) -> tuple[str, int | None]:
+            name = urllib.parse.quote(str(item.get("name", "")), safe="")
+            query = urllib.parse.urlencode({"timeout": int(kwargs.get("timeout", 5000)), "url": kwargs.get("test_url", DEFAULT_TEST_URL)})
+            request = urllib.request.Request(f"http://{controller}/proxies/{name}/delay?{query}")
+            try:
+                with urllib.request.urlopen(request, timeout=query_timeout) as resp:
+                    value = json.loads(resp.read()).get("delay", -1)
+            except Exception:
+                return _node_key(item), None
+            if isinstance(value, (int, float)) and 0 <= value <= delay_limit:
+                return _node_key(item), int(value)
+            return _node_key(item), None
+
         try:
             process = subprocess.Popen(
                 [str(binpath), "-d", str(CLASH_DIR), "-f", str(Path(directory) / "config.yaml")],
@@ -223,18 +279,17 @@ def _check_alive(proxies: list[dict], **kwargs) -> dict:
                 stderr=subprocess.DEVNULL,
             )
             pipeline._wait_for_controller(process, controller)
+            threads = min(max(1, int(kwargs.get("num_threads", 16))), 32)
             measured: dict[str, int] = {}
-            for item in candidates:
-                name = urllib.parse.quote(str(item.get("name", "")), safe="")
-                query = urllib.parse.urlencode({"timeout": int(kwargs.get("timeout", 5000)), "url": kwargs.get("test_url", "https://www.google.com/generate_204")})
-                request = urllib.request.Request(f"http://{controller}/proxies/{name}/delay?{query}")
-                try:
-                    with urllib.request.urlopen(request, timeout=max(2, int(kwargs.get("timeout", 5000)) / 1000 + 2)) as resp:
-                        value = json.loads(resp.read()).get("delay", -1)
-                    if isinstance(value, (int, float)) and 0 <= value <= delay_limit:
-                        measured[_node_key(item)] = int(value)
-                except Exception:
-                    continue
+            with ThreadPoolExecutor(max_workers=threads) as pool:
+                futures = [pool.submit(probe, item) for item in candidates]
+                for future in as_completed(futures):
+                    key, delay = future.result()
+                    if delay is not None:
+                        measured[key] = delay
+                    on_probed = kwargs.get("on_probed")
+                    if on_probed:
+                        on_probed()
             return measured
         finally:
             if process is not None:
@@ -245,86 +300,79 @@ def _check_alive(proxies: list[dict], **kwargs) -> dict:
                     process.kill()
 
 
-def _probe_locate(proxies: list[dict], residential: bool) -> dict:
-    """地区（mmdb）+ 住宅（经节点出口查询情报库），返回 {node_key: {region, residential}}。"""
+def _load_mmdb_reader():
+    """加载本地 Country.mmdb（缺失/损坏时返回 None，地区退化为未知）。"""
+    mmdb = CLASH_DIR / "Country.mmdb"
+    if not mmdb.is_file():
+        return None
+    try:
+        from geoip2 import database
+
+        return database.Reader(str(mmdb))
+    except Exception:
+        return None
+
+
+def _mmdb_region(proxy: dict, reader) -> tuple[str, str | None]:
+    """经服务器地址本地解析地区（不经过节点，失效节点也可用）。"""
+    key = _node_key(proxy)
+    if reader is None:
+        return key, None
+    try:
+        import socket as _socket
+
+        ip = _socket.gethostbyname(str(proxy.get("server", "")))
+        country = (reader.country(ip).country.names or {}).get("zh-CN", "")
+        return key, country or None
+    except Exception:
+        return key, None
+
+
+def _probe_locate(
+    proxies: list[dict], residential: bool, params: dict | None = None, alive_keys=None, on_located=None
+) -> dict:
+    """地区 + 住宅判定，返回 {node_key: {region, residential}}。
+
+    - 地区优先取情报库经节点出口的实测结果；出口不可达时退回 mmdb 本地解析
+    - 住宅判定仅对存活节点发起（经节点出口查询），失效节点跳过以节省时间
+    - 复用引擎同源的 location.batch_query：每节点独立监听端口，避免经默认出口误判
+    """
     import sys
 
     if str(PROJECT_DIR / "subscribe") not in sys.path:
         sys.path.insert(0, str(PROJECT_DIR))
+    threads = min(max(1, int((params or {}).get("num_threads", 16))), 32)
+    reader = _load_mmdb_reader()
     mapping: dict[str, dict] = {}
 
-    reader = None
-    mmdb = CLASH_DIR / "Country.mmdb"
-    if mmdb.is_file():
-        try:
-            from geoip2 import database
-
-            reader = database.Reader(str(mmdb))
-        except Exception:
-            reader = None
+    with ThreadPoolExecutor(max_workers=threads) as pool:
+        futures = [pool.submit(_mmdb_region, dict(p), reader) for p in proxies]
+        for future in as_completed(futures):
+            key, country = future.result()
+            if country:
+                mapping[key] = {"region": country}
+            if on_located:
+                on_located()
 
     if residential:
-        import sys
+        alive_proxies = [dict(p) for p in proxies if alive_keys is None or _node_key(p) in alive_keys]
+        if alive_proxies:
+            if str(PROJECT_DIR / "subscribe") not in sys.path:
+                sys.path.insert(0, str(PROJECT_DIR / "subscribe"))
+            import location
 
-        if str(PROJECT_DIR / "subscribe") not in sys.path:
-            sys.path.insert(0, str(PROJECT_DIR / "subscribe"))
-        import executable
-        import location
-
-        clash_bin, _ = executable.which_bin()
-        binpath = CLASH_DIR / clash_bin
-        if binpath.is_file():
-            import clash
-            import pipeline
-
-            with socket.socket() as listener:
-                listener.bind(("127.0.0.1", 0))
-                port = listener.getsockname()[1]
-            process = None
-            with tempfile.TemporaryDirectory(prefix="agg-locate-") as directory:
-                controller = f"127.0.0.1:{port}"
-                candidates = clash.generate_config(
-                    directory, [dict(p) for p in proxies], "config.yaml", controller=controller
-                )
-                try:
-                    process = subprocess.Popen(
-                        [str(binpath), "-d", str(CLASH_DIR), "-f", str(Path(directory) / "config.yaml")],
-                        stdout=subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL,
-                    )
-                    pipeline._wait_for_controller(process, controller)
-                    for item in candidates:
-                        try:
-                            info = location.check_residential(item, port, reader=reader)
-                        except Exception:
-                            continue
-                        if info.success and info.result.country:
-                            mapping[_node_key(item)] = {
-                                "region": info.result.country,
-                                "residential": info.result.ip_type == "isp",
-                            }
-                finally:
-                    if process is not None:
-                        process.terminate()
-                        try:
-                            process.wait(timeout=5)
-                        except subprocess.TimeoutExpired:
-                            process.kill()
-    if reader is not None:
-        import socket as _socket
-
-        for proxy in proxies:
-            key = _node_key(proxy)
-            if key in mapping:
-                continue
-            try:
-                ip = _socket.gethostbyname(str(proxy.get("server", "")))
-                resp = reader.country(ip)
-                country = (resp.country.names or {}).get("zh-CN", "")
-                if country:
-                    mapping[key] = {"region": country}
-            except Exception:
-                continue
+            results = location.batch_query(
+                proxies=alive_proxies,
+                func=partial(location.check_residential, reader=reader),
+                num_threads=threads,
+                show_progress=False,
+            )
+            for item in results or []:
+                if item is not None and item.success and item.result.country:
+                    mapping[_node_key(item.proxy)] = {
+                        "region": item.result.country,
+                        "residential": item.result.ip_type == "isp",
+                    }
     return mapping
 
 
@@ -332,7 +380,7 @@ def test_nodes(
     ids: list[int] | None = None, locate: bool = True, residential: bool = True, params: dict | None = None
 ) -> TestJob:
     """对勾选节点（或散节点全部）执行验活并更新状态。"""
-    params = params or {}
+    resolved = _resolve_params(params)
     session = db.SessionLocal()
     try:
         stmt = select(Node).where(Node.kind == "crawl")
@@ -350,8 +398,25 @@ def test_nodes(
     def worker() -> None:
         try:
             proxies = [raw for _nid, raw in snapshots]
-            delays = _check_alive(proxies, **params)
-            infos = _probe_locate(proxies, residential=residential) if locate else {}
+            hub.begin_phase(job.job_id, PHASE_DELAY)
+            delays = _check_alive(
+                proxies,
+                max_delay=resolved["max_delay"],
+                timeout=resolved["timeout"],
+                test_url=resolved["test_url"],
+                num_threads=resolved["num_threads"],
+                on_probed=lambda: hub.advance(job.job_id),
+            )
+            infos = {}
+            if locate:
+                hub.begin_phase(job.job_id, PHASE_LOCATE)
+                infos = _probe_locate(
+                    proxies,
+                    residential=residential,
+                    params=resolved,
+                    alive_keys=set(delays),
+                    on_located=lambda: hub.advance(job.job_id),
+                )
             s = db.SessionLocal()
             try:
                 for nid, raw in snapshots:
@@ -361,15 +426,13 @@ def test_nodes(
                     key = _node_key(raw)
                     delay = delays.get(key)
                     row.alive = delay is not None
-                    if delay is not None:
-                        row.delay_ms = delay
+                    row.delay_ms = delay  # 失效即清空，不保留上一轮实测值
                     info = infos.get(key) or {}
                     if info.get("region"):
                         row.region = info["region"]
                     if "residential" in info and info["residential"] is not None:
                         row.residential = info["residential"]
                     s.commit()
-                    hub.advance(job.job_id)
             finally:
                 s.close()
             hub.finish(job.job_id, "success")

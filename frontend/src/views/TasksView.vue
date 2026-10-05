@@ -69,12 +69,16 @@
     </section>
 
     <!-- ======== 任务详情抽屉 ======== -->
-    <a-drawer :open="drawerOpen" :title="`#${current?.id} · ${modeLabel(current?.mode)}`" width="680" @close="closeDetail">
+    <a-drawer :open="drawerOpen" :title="`#${current?.id} · ${modeLabel(current?.mode)}`" width="720" @close="closeDetail">
       <template v-if="current">
         <!-- 状态与阶段 -->
         <div class="drawer-status">
           <span v-html="statusTag(current.status)"></span>
-          <span class="muted" style="font-size:12px">已运行 {{ fmtDuration(current.duration_ms) }}</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="muted" style="font-size:12px">已运行 {{ fmtDuration(current.duration_ms) }}</span>
+            <a-button v-if="current.status === 'running'" size="small" danger @click="cancel">⏹ 取消</a-button>
+            <a-button size="small" @click="downloadLogs">⤓ 日志</a-button>
+          </div>
         </div>
         <div class="stage-line">
           <div v-for="s in stages" :key="s" class="stage" :class="stageClass(s)">
@@ -86,25 +90,27 @@
 
         <!-- 统计 chips -->
         <div class="run-meta" v-if="current.stats">
+          <span class="chip" v-if="current.stats.subs_total != null"><b>{{ current.stats.subs_total }}</b>订阅候选</span>
           <span class="chip" v-if="current.stats.subs_alive != null"><b>{{ current.stats.subs_alive }}</b>存活订阅</span>
-          <span class="chip" v-if="current.stats.nodes_alive != null"><b>{{ current.stats.nodes_alive }}</b>存活节点</span>
           <span class="chip" v-if="current.stats.nodes_total != null"><b>{{ current.stats.nodes_total }}</b>抓取节点</span>
+          <span class="chip" v-if="current.stats.nodes_alive != null"><b>{{ current.stats.nodes_alive }}</b>存活节点</span>
           <span class="chip"><b>{{ artifacts.length }}</b>产物</span>
         </div>
         <div v-if="current.error" class="callout warn" style="margin-top:10px">失败原因：{{ current.error }}</div>
 
         <!-- 页签 -->
-        <div class="detail-tabs">
-          <div class="dt" :class="{ on: tab === 'log' }" @click="tab = 'log'">实时日志</div>
-          <div class="dt" :class="{ on: tab === 'params' }" @click="tab = 'params'">配置项</div>
-          <div class="dt" :class="{ on: tab === 'arts' }" @click="tab = 'arts'">现阶段结果</div>
+        <div class="tabs">
+          <div class="tab" :class="{ active: tab === 'log' }" @click="tab = 'log'">实时日志</div>
+          <div class="tab" :class="{ active: tab === 'params' }" @click="tab = 'params'">配置项</div>
+          <div class="tab" :class="{ active: tab === 'arts' }" @click="tab = 'arts'">现阶段结果</div>
         </div>
 
-        <!-- 日志 -->
+        <!-- 实时日志 -->
         <div v-show="tab === 'log'">
           <div class="log-ctl" style="margin-bottom:10px">
             <label class="checkbox"><input type="checkbox" v-model="autoscroll" /> 自动滚动</label>
             <label class="checkbox"><input type="checkbox" v-model="onlyWarn" /> 仅看警告/错误</label>
+            <a class="btn link" @click="downloadLogs">⤓ 下载</a>
             <span class="chip" style="padding:3px 10px"><span class="dot-live" v-if="current.status === 'running'"></span>{{ current.status === 'running' ? '实时' : '已结束' }}</span>
           </div>
           <div class="log-box log-pane" ref="logbox">
@@ -118,8 +124,11 @@
         </div>
 
         <!-- 配置项 -->
-        <div v-show="tab === 'params'" class="param-list">
-          <div class="kv-row" v-for="(v, k) in paramRows" :key="k"><span class="k">{{ k }}</span><span class="v">{{ v }}</span></div>
+        <div v-show="tab === 'params'" class="param-groups">
+          <div class="param-group" v-for="g in paramGroups" :key="g.title">
+            <div class="pg-title">{{ g.title }}</div>
+            <div class="kv-row" v-for="(v, k) in g.rows" :key="k"><span class="k">{{ k }}</span><span class="v">{{ v }}</span></div>
+          </div>
         </div>
 
         <!-- 现阶段结果 -->
@@ -128,7 +137,12 @@
             ⚠️ 准原子发布中断：目标 <b>{{ current.publish_pending.join('、') }}</b> 未写入成功，系统库数据已可用。
             <div style="margin-top:8px"><a-button type="primary" size="small" @click="retryPublish">⟳ 重试发布</a-button></div>
           </div>
-          <div v-if="artifacts.length">
+          <div class="param-group">
+            <div class="pg-title">本轮结果</div>
+            <div class="kv-row" v-for="(v, k) in resultRows" :key="k"><span class="k">{{ k }}</span><span class="v">{{ v }}</span></div>
+          </div>
+          <div class="param-group" v-if="artifacts.length">
+            <div class="pg-title">转换产物</div>
             <div class="kv-row" v-for="a in artifacts" :key="a.id" style="align-items:center">
               <span class="k">{{ a.target }}</span>
               <span class="v"><span class="mono">{{ a.path.split(/[\\/]/).pop() }}</span> <span class="muted">· {{ (a.size / 1024).toFixed(1) }} KB</span></span>
@@ -241,7 +255,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } from 'vue';
 import { Modal, message } from 'ant-design-vue';
 
-import { params as paramsApi, results as resultsApi, schedules as schedulesApi, storage as storageApi, tasks as tasksApi } from '../api';
+import { params as paramsApi, results as resultsApi, schedules as schedulesApi, sources as sourcesApi, storage as storageApi, tasks as tasksApi } from '../api';
 
 const MODE = { crawl: '仅爬取', aggregate: '回测', full: '爬取+聚合' };
 const STATUS = { running: '运行中', success: '成功', failed: '失败', cancelled: '已取消', 'partial-success': '部分发布', pending: '等待中' };
@@ -277,16 +291,66 @@ const submitting = ref(false);
 const scheduled = ref(false);
 const scheduleRows = ref([]);
 const editingSchedule = ref(null);
+const aliveParams = ref({});
 const sched = reactive({ kind: 'minute', n: 30, time: '09:00', weekdays: [1] });
 const draft = reactive({ mode: 'full', num_threads: 64, max_delay: 5000, timeout: 5000 });
 
 const filtered = computed(() => (statusFilter.value === 'all' ? runs.value : runs.value.filter((r) => r.status === statusFilter.value)));
 const stages = computed(() => STAGE_LIST[current.value?.mode || 'crawl']);
-const paramRows = computed(() => {
-  const p = current.value?.params || {};
-  const rows = { 模式: MODE[current.value?.mode], 线程数: p.num_threads, 最大存活延迟: (p.max_delay || '—') + ' ms', 验活超时: (p.timeout || '—') + ' ms' };
-  if (p.bind_target_ids?.length) rows['绑定目标'] = (p.bind_target_ids || []).map((id) => targets.value.find((t) => t.id === id)?.name || id).join(' + ');
-  else rows['绑定目标'] = '—（不绑定）';
+const sourceName = (id) => sourceRows.value.find((s) => s.id === id)?.name || `#${id}`;
+const targetName = (id) => targets.value.find((t) => t.id === id)?.name || `#${id}`;
+const paramGroups = computed(() => {
+  const t = current.value;
+  if (!t) return [];
+  const p = t.params || {};
+  const scopeIds = p.source_ids || [];
+  const scope =
+    t.mode === 'aggregate'
+      ? '不爬取（沿用系统库上轮订阅池 / remains）'
+      : scopeIds.length
+        ? `${scopeIds.map(sourceName).join('、')}（${scopeIds.length} 个源）`
+        : '全部启用源';
+  const binds = (p.bind_target_ids || []).map(targetName);
+  return [
+    {
+      title: '运行配置',
+      rows: {
+        运行模式: `${MODE[t.mode] || t.mode}（${t.mode}）`,
+        触发方式: t.trigger === 'schedule' ? '定时执行' : '手动执行',
+        开始时间: fmtTime(t.started_at),
+        耗时: fmtDuration(t.duration_ms),
+      },
+    },
+    {
+      title: '验活参数',
+      rows: {
+        线程数: p.num_threads ?? '—',
+        最大存活延迟: (p.max_delay ?? '—') + ' ms',
+        验活超时: (p.timeout ?? '—') + ' ms',
+        测试URL: aliveParams.value.primary_test_url || aliveParams.value.test_urls?.[0] || '—（取验活参数页配置）',
+      },
+    },
+    { title: '执行范围', rows: { 爬取源: scope } },
+    {
+      title: '发布与旧数据',
+      rows: {
+        绑定目标: binds.length ? binds.join(' + ') : '—（仅爬取不绑定）',
+        旧数据来源: '系统库（上轮订阅池 / remains）',
+      },
+    },
+  ];
+});
+const resultRows = computed(() => {
+  const t = current.value;
+  if (!t) return {};
+  const s = t.stats || {};
+  const rows = {};
+  if (s.subs_total != null) rows['订阅候选'] = `${s.subs_total} 条（去重后入订阅池）`;
+  if (s.subs_alive != null) rows['存活订阅'] = `${s.subs_alive} 条`;
+  if (s.nodes_total != null) rows['抓取节点'] = `${s.nodes_total} 个`;
+  if (s.nodes_alive != null) rows['存活节点'] = `${s.nodes_alive} 个`;
+  rows['转换产物'] = `${artifacts.value.length} 个`;
+  rows['当前状态'] = statusLabel(t.status);
   return rows;
 });
 const visibleLogs = computed(() => (onlyWarn.value ? logs.value.filter((l) => l.level !== 'INFO' && l.level !== 'DEBUG') : logs.value));
@@ -472,13 +536,26 @@ async function onRemoveSchedule(s) {
   });
 }
 
-async function prepareDraft() {
-  const [alive, tgts] = await Promise.all([paramsApi.readAlive(), storageApi.list()]);
-  Object.assign(draft, { num_threads: alive.num_threads ?? 64, max_delay: alive.max_delay ?? 5000, timeout: alive.timeout ?? 5000 });
+async function loadReference() {
+  const [alive, tgts, srcs] = await Promise.all([
+    paramsApi.readAlive(),
+    storageApi.list(),
+    sourcesApi.list({ page_size: 200 }),
+  ]);
+  aliveParams.value = alive || {};
   targets.value = tgts.items;
-  sourceRows.value = (await (await import('../api')).sources.list({ page_size: 200 })).items;
+  sourceRows.value = srcs.items;
+}
+
+async function prepareDraft() {
+  await loadReference();
+  Object.assign(draft, {
+    num_threads: aliveParams.value.num_threads ?? 64,
+    max_delay: aliveParams.value.max_delay ?? 5000,
+    timeout: aliveParams.value.timeout ?? 5000,
+  });
   sourceSel.value = Object.fromEntries(sourceRows.value.filter((s) => s.enable).map((s) => [s.id, true]));
-  bound.value = Object.fromEntries(tgts.items.filter((t) => t.enable).slice(0, 1).map((t) => [t.id, true]));
+  bound.value = Object.fromEntries(targets.value.filter((t) => t.enable).slice(0, 1).map((t) => [t.id, true]));
 }
 async function openCreate() {
   await prepareDraft();
@@ -542,12 +619,15 @@ async function submit() {
   }
 }
 
-onMounted(() => { loadList(); loadSchedules(); });
+onMounted(() => { loadList(); loadSchedules(); loadReference(); });
 onBeforeUnmount(() => clearInterval(logTimer));
 </script>
 
 <style scoped>
 .drawer-status{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
 .drawer-progress-text{font-size:12px;color:var(--text-3);margin-bottom:12px}
-.log-pane{height:calc(100vh - 460px);min-height:240px}
+.log-pane{height:400px}
+.param-groups{display:flex;flex-direction:column;gap:14px}
+.param-group{border:1px solid var(--line);border-radius:10px;padding:4px 14px 8px}
+.pg-title{font-size:12px;font-weight:600;color:var(--text-3);padding:10px 0 2px;letter-spacing:.3px}
 </style>

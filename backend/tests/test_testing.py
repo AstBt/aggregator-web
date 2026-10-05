@@ -113,6 +113,59 @@ class TestNodeTesting:
         assert by_name["🚀 香港01"]["delay_ms"] == 111
         assert by_name["🚀 新加坡02"]["delay_ms"] == 222
 
+    def test_node_test_updates_delay_region_residential(self, client, operator_token, seeded, monkeypatch):
+        from services import test_service
+
+        def fake_check(proxies, **kwargs):
+            return {test_service._node_key(p): 111 for p in proxies}
+
+        def fake_locate(proxies, residential=False, **kwargs):
+            return {
+                test_service._node_key(p): {"region": "香港", "residential": True}
+                for p in proxies
+            }
+
+        monkeypatch.setattr(test_service, "_check_alive", fake_check)
+        monkeypatch.setattr(test_service, "_probe_locate", fake_locate)
+        resp = client.post(
+            "/api/nodes/test",
+            json={"ids": [1, 2], "locate": True, "residential": True},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 200
+        _wait_job(client, operator_token, resp.json()["data"]["job_id"])
+        nodes = client.get("/api/nodes?kind=crawl", headers=auth_header(operator_token)).json()["data"]["items"]
+        by_name = {n["name"]: n for n in nodes}
+        assert by_name["🚀 香港01"]["delay_ms"] == 111
+        assert by_name["🚀 香港01"]["region"] == "香港"
+        assert by_name["🚀 香港01"]["residential"] is True
+        assert by_name["🚀 新加坡02"]["delay_ms"] == 111
+
+    def test_dead_node_clears_stale_delay(self, client, operator_token, seeded, monkeypatch):
+        from services import test_service
+
+        monkeypatch.setattr(test_service, "_check_alive", lambda proxies, **kwargs: {})
+        client.post("/api/nodes/test", json={"ids": [1], "locate": False}, headers=auth_header(operator_token))
+        _wait_job(client, operator_token, None)
+        nodes = client.get("/api/nodes?kind=crawl", headers=auth_header(operator_token)).json()["data"]["items"]
+        dead = next(n for n in nodes if n["name"] == "🚀 香港01")
+        assert dead["alive"] is False
+        assert dead["delay_ms"] is None  # 失效后不保留上一轮实测延迟
+
+    def test_node_test_reports_phase_progress(self, client, operator_token, seeded, monkeypatch):
+        from services import test_service
+
+        def slow_check(proxies, **kwargs):
+            time.sleep(1.5)
+            return {}
+
+        monkeypatch.setattr(test_service, "_check_alive", slow_check)
+        client.post("/api/nodes/test", json={"locate": False}, headers=auth_header(operator_token))
+        mid = client.get("/api/test-jobs", headers=auth_header(operator_token)).json()["data"]["items"][0]
+        assert mid["kind"] == "node"
+        assert mid["phase"]  # 进行中带有阶段标签
+        _wait_job(client, operator_token, None)
+
     def test_test_all_crawl_nodes_when_no_ids(self, client, operator_token, seeded, monkeypatch):
         from services import test_service
 

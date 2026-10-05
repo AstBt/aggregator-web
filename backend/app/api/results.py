@@ -153,7 +153,10 @@ def list_nodes(
     _: User = Depends(require_role("viewer")),
     db: Session = Depends(get_db),
 ) -> dict:
-    """节点列表：默认仅散节点（kind=crawl，爬取直接获得）；订阅解析节点经订阅详情查看。"""
+    """节点列表：默认仅散节点（kind=crawl，爬取直接获得）；订阅解析节点经订阅详情查看。
+
+    run_id 缺省时返回系统库全部轮次的散节点（与页面顶部汇总口径一致）。
+    """
     stmt = select(Node).where(Node.kind == kind)
     if protocol:
         stmt = stmt.where(Node.protocol == protocol)
@@ -173,10 +176,6 @@ def list_nodes(
         stmt = stmt.where(Node.source == source)
     if run_id is not None:
         stmt = stmt.where(Node.run_id == run_id)
-    else:
-        latest = db.scalar(select(func.max(Node.run_id)))
-        if latest:
-            stmt = stmt.where(Node.run_id == latest)
     total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
     rows = db.scalars(stmt.order_by(Node.id).offset((page - 1) * page_size).limit(page_size)).all()
     return {"total": total, "items": [_node_item(r) for r in rows]}
@@ -218,6 +217,7 @@ def list_test_jobs(
                 "done": j.done,
                 "status": j.status,
                 "message": j.message,
+                "phase": j.phase,
             }
             for j in test_service.hub.list()
         ]

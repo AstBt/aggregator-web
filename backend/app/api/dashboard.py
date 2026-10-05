@@ -46,6 +46,7 @@ def overview(
         "avg_delay_ms": round(
             db.scalar(select(func.avg(Node.delay_ms)).where(Node.alive.is_(True), Node.delay_ms.isnot(None))) or 0
         ),
+        "loose": _loose_stats(db),
         "recent_runs": [
             _run_item(r)
             for r in db.scalars(select(CrawlRun).order_by(CrawlRun.id.desc()).limit(10))
@@ -66,6 +67,35 @@ def overview(
             for t in db.scalars(select(StorageTarget).order_by(StorageTarget.id))
         ],
         "latest_run_id": db.scalar(select(func.max(Node.run_id))),
+    }
+
+
+def _loose_stats(db: Session) -> dict:
+    """散节点（kind=crawl）系统库口径汇总：节点浏览页顶部统计用。
+
+    与 nodes_alive/residential_count 的区别：后者含订阅解析节点（kind=sub），
+    前者仅统计爬取源直接获得的散节点，与节点浏览列表口径一致。
+    """
+    crawl = Node.kind == "crawl"
+    sources = [
+        s
+        for (s,) in db.execute(select(Node.source).where(crawl, Node.source.isnot(None)).distinct())
+        if s
+    ]
+    return {
+        "total": db.scalar(select(func.count()).select_from(Node).where(crawl)) or 0,
+        "alive": db.scalar(select(func.count()).select_from(Node).where(crawl, Node.alive.is_(True))) or 0,
+        "avg_delay_ms": round(
+            db.scalar(
+                select(func.avg(Node.delay_ms)).where(crawl, Node.alive.is_(True), Node.delay_ms.isnot(None))
+            )
+            or 0
+        ),
+        "residential": db.scalar(
+            select(func.count()).select_from(Node).where(crawl, Node.alive.is_(True), Node.residential.is_(True))
+        )
+        or 0,
+        "sources": sorted(sources),
     }
 
 
