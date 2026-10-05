@@ -58,7 +58,11 @@ def _push_remote(target: StorageTarget, specs: list[dict], group: str) -> dict:
         if tool.push_to(content=content, item=item, group=group):
             written += 1
         else:
-            raise ValueError(f"远端写入失败: {os.path.basename(spec['path'])}")
+            raise ValueError(
+                f"远端写入失败: {os.path.basename(spec['path'])}"
+                "（GitHub 对高频 PATCH 可能返回 400/422 滥用检测，通常稍后重试即可恢复，"
+                "可在任务详情使用「重试发布」补偿）"
+            )
     return {"ok": True, "written": written}
 
 
