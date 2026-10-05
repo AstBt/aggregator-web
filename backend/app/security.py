@@ -10,7 +10,7 @@ from typing import Literal
 import bcrypt
 import jwt
 
-from config import settings
+from settings import settings
 
 Role = Literal["admin", "operator", "viewer"]
 ROLES: dict[str, int] = {"viewer": 0, "operator": 1, "admin": 2}

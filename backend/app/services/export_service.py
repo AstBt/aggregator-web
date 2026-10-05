@@ -13,7 +13,7 @@ import urllib.parse
 
 import yaml
 
-from config import settings
+from settings import settings
 from services import secrets  # noqa: F401  （保持服务层依赖集中）
 
 TARGETS = ("clash", "v2ray", "singbox")

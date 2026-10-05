@@ -30,13 +30,13 @@ def app(tmp_path, monkeypatch):
     monkeypatch.setenv("AGG_DATA_DIR", str(data_dir))
     monkeypatch.setenv("AGG_DATABASE_URL", f"sqlite:///{data_dir / 'test.db'}")
 
-    import config
+    import settings
 
     db_url = "sqlite:///" + (data_dir / "test.db").as_posix()
-    config.settings.data_dir = data_dir
-    config.settings.database_url = db_url
-    config.settings.jwt_secret = "test-secret-key-for-pytest-only"
-    config.settings.jwt_ttl_seconds = 3600
+    settings.settings.data_dir = data_dir
+    settings.settings.database_url = db_url
+    settings.settings.jwt_secret = "test-secret-key-for-pytest-only"
+    settings.settings.jwt_ttl_seconds = 3600
 
     import db
 

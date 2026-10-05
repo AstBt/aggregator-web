@@ -27,6 +27,7 @@ export const sources = {
   test: (id) => http.post(`/sources/${id}/test`),
   export: () => http.get('/sources/export'),
   import: (payload) => http.post('/sources/import', payload),
+  schema: () => http.get('/sources/schema'),
 };
 
 export const params = {

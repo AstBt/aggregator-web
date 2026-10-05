@@ -31,7 +31,7 @@ DEFAULT_SETTINGS: dict[str, dict] = {
 
 
 def init_db() -> None:
-    from config import settings
+    from settings import settings
 
     db.Base.metadata.create_all(db.engine)
     session = db.SessionLocal()

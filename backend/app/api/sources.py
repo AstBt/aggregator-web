@@ -11,9 +11,20 @@ from db import get_db
 from deps import require_role
 from models import CrawlSource, User
 from schemas import Page, SourceCreate, SourceItem, SourceUpdate
-from services import sources_service
+from services import source_schema, sources_service
 
 router = APIRouter(prefix="/api/sources", tags=["sources"])
+
+
+@router.get("/schema")
+def source_schema_api(
+    _: User = Depends(require_role("viewer")),
+    db: Session = Depends(get_db),
+) -> dict:
+    """爬取源配置 Schema（字段/示例/条件/校验规则的单一事实源，前端动态渲染表单）。"""
+    from engine_adapter.registry import plugin_names
+
+    return {"ok": True, "schemas": source_schema.all_schemas(plugin_names())}
 
 
 @router.get("", response_model=Page)

@@ -14,7 +14,7 @@ if str(APP_DIR) not in sys.path:
 def main() -> None:
     import uvicorn
 
-    from config import settings
+    from settings import settings
 
     uvicorn.run(
         "main:app",

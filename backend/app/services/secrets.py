@@ -10,7 +10,7 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet
 
-from config import settings
+from settings import settings
 
 _KEY_FILE = settings.data_dir / ".secret.key"
 

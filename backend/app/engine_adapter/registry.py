@@ -4,10 +4,12 @@
 from __future__ import annotations
 
 import sys
-from functools import lru_cache
+import threading
 from pathlib import Path
 
 SUBSCRIBE_DIR = Path(__file__).resolve().parents[3] / "subscribe"
+_LOCK = threading.Lock()
+_CACHE: frozenset[str] | None = None
 
 
 def _ensure_engine_on_path() -> None:
@@ -16,15 +18,31 @@ def _ensure_engine_on_path() -> None:
         sys.path.insert(0, path)
 
 
-@lru_cache(maxsize=1)
-def _plugin_names() -> frozenset[str]:
+def _load_plugins() -> frozenset[str]:
     _ensure_engine_on_path()
     try:
-        from crawl.channels.plugins import __all__ as names  # type: ignore
+        from crawl.channels.plugins import PLUGINS  # type: ignore
 
-        return frozenset(names)
+        return frozenset(PLUGINS)
     except Exception:
         return frozenset()
+
+
+def _plugin_names() -> frozenset[str]:
+    """已注册插件集合；导入失败不缓存（下次可重试）。"""
+    global _CACHE
+    with _LOCK:
+        if _CACHE:
+            return _CACHE
+        names = _load_plugins()
+        if names:
+            _CACHE = names
+        return names
+
+
+def plugin_names() -> list[str]:
+    """已注册插件列表（稳定顺序）。"""
+    return sorted(_plugin_names())
 
 
 def plugin_exists(name: str) -> bool:

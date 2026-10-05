@@ -59,7 +59,7 @@ class TestSourceCrud:
     def test_toggle_enable(self, client, operator_token):
         sid = client.post(
             "/api/sources",
-            json={"type": "gist", "name": "g1", "config": {"max_gists": 50}},
+            json={"type": "gist", "name": "g1", "config": {"token": "ghp_fake", "max_gists": 50}},
             headers=auth_header(operator_token),
         ).json()["data"]["id"]
         resp = client.post(f"/api/sources/{sid}/toggle", headers=auth_header(operator_token))
@@ -85,7 +85,7 @@ class TestSourceValidation:
             headers=auth_header(operator_token),
         )
         assert resp.status_code == 400
-        assert "include" in resp.json()["message"]
+        assert "包含正则" in resp.json()["message"]
 
     def test_page_requires_url(self, client, operator_token):
         resp = client.post(
@@ -183,3 +183,95 @@ class TestSourceImportExport:
         assert names == {"google", "ch1"}
         google = next(s for s in sources if s["name"] == "google")
         assert "push_to" not in google["config"]
+
+
+class TestSourceSchema:
+    def test_schema_endpoint_covers_all_types_with_examples(self, client, operator_token):
+        data = client.get("/api/sources/schema", headers=auth_header(operator_token)).json()["data"]
+        schemas = data["schemas"]
+        assert set(schemas) == {"telegram", "github", "gist", "google", "yandex", "page", "repo", "script"}
+        # telegram 标识字段为频道名；其余为源名称
+        assert schemas["telegram"]["identity_label"] == "频道名"
+        assert schemas["github"]["identity_label"] == "源名称"
+        # 每个字段都有示例与说明
+        for meta in schemas.values():
+            for field in meta["fields"]:
+                assert "example" in field and "label" in field and "hint" in field
+        # script 插件枚举来自注册表
+        plugins = next(f for f in schemas["script"]["fields"] if f["key"] == "plugin")["options"]
+        assert "v2rayse" in plugins and "fofa" in plugins
+
+    def test_github_requires_token_or_cookie(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={"type": "github", "name": "gh1", "config": {"pages": 2}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 400
+        assert "Token" in resp.json()["message"]
+
+    def test_github_with_token_ok(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={"type": "github", "name": "gh2", "config": {"token": "ghp_fake", "pages": 2}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 201
+
+    def test_gist_requires_token(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={"type": "gist", "name": "g1", "config": {"mode": "timeline", "max_gists": 50}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 400
+        assert "Token" in resp.json()["message"]
+
+    def test_gist_search_requires_cookie(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={"type": "gist", "name": "g2", "config": {"mode": "search", "token": "ghp_fake"}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 400
+        assert "Cookie" in resp.json()["message"]
+
+    def test_gist_search_full_config_ok(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={
+                "type": "gist",
+                "name": "g3",
+                "config": {
+                    "mode": "search", "gh_cookie": "user_session=abc", "token": "ghp_fake",
+                    "patterns": ["/link/ ?sub=1"], "pages": 2, "max_gists": 100, "max_filesize": 65536,
+                },
+            },
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["config"]["mode"] == "search"
+
+    def test_telegram_identity_is_channel_name(self, client, operator_token):
+        resp = client.post(
+            "/api/sources",
+            json={"type": "telegram", "name": "oneclickvpnkeys", "config": {"pages": 5, "rename": "🚀"}},
+            headers=auth_header(operator_token),
+        )
+        assert resp.status_code == 201
+        assert resp.json()["data"]["config"]["rename"] == "🚀"
+
+    def test_import_legacy_config_normalized(self, client, operator_token):
+        """旧 my-config crawl 节导入：字段归一化、push_to 丢弃。"""
+        payload = {
+            "telegram": {"channels": {"oneclickvpnkeys": {"pages": 5, "task": {"rename": "🚀"}, "push_to": ["free"]}}},
+            "github": {"pages": 2, "exclude_repos": [], "patterns": [], "push_to": ["free"]},
+            "gist": {"enable": True, "max_gists": 100, "patterns": [], "push_to": ["free"]},
+        }
+        resp = client.post("/api/sources/import", json=payload, headers=auth_header(operator_token))
+        assert resp.status_code == 200
+        # github/gist 缺凭证 → 跳过（导入 conservative）
+        assert resp.json()["data"]["created"] == 1
+        items = client.get("/api/sources", headers=auth_header(operator_token)).json()["data"]["items"]
+        names = {i["name"] for i in items}
+        assert "oneclickvpnkeys" in names

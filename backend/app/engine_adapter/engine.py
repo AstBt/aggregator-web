@@ -31,10 +31,16 @@ class RealEngine:
         from crawl.engine import run as crawl_run
         from config.models import CrawlConfig, Node as ConfNode, StorageConfig
 
-        config = CrawlConfig.parse(ConfNode(_crawl_config_dict(ctx)), StorageConfig())
+        config_dict, credentials = _crawl_config_dict(ctx)
+        config = CrawlConfig.parse(ConfNode(config_dict), StorageConfig())
         if not config.enable:
             return []
-        sites = crawl_run(config, storage=None, num_threads=ctx.params.get("num_threads", 32), display=False, mode=0)
+        # 凭证注入：渠道从环境变量读取（GH_TOKEN/GH_COOKIE/PUSH_TOKEN），
+        # 这里按源配置临时注入并在结束后还原（任务串行执行，无并发冲突）
+        with _env_scope(credentials):
+            sites = crawl_run(
+                config, storage=None, num_threads=ctx.params.get("num_threads", 32), display=False, mode=0
+            )
         out: list[tuple[str, str, bool]] = []
         for site in sites:
             for url in site.nodes.subscribe_list():
@@ -139,8 +145,12 @@ def _quoted_repr(dumper, data):
     return clash.quoted_scalar(dumper, data)
 
 
-def _crawl_config_dict(ctx: RunContext) -> dict:
-    """DB 源 + 参数 → CrawlConfig 可解析字典（仅源信息，不含 push_to 等分组残留）。"""
+def _crawl_config_dict(ctx: RunContext) -> tuple[dict, dict]:
+    """DB 源 + 参数 → (CrawlConfig 可解析字典, 凭证字典)。
+
+    凭证（github token/cookie、gist gh_cookie/token）由调用方注入环境变量；
+    gist 的 mode 决定频道读取哪个凭证（search 需要 cookie+token，timeline 用 token）。
+    """
     import db
     from models import CrawlSource, Setting
 
@@ -151,6 +161,7 @@ def _crawl_config_dict(ctx: RunContext) -> dict:
         by_type: dict[str, list] = {}
         for source in sources:
             by_type.setdefault(source.type, []).append(source)
+        credentials: dict[str, str] = {}
         config: dict = {
             "enable": True,
             "exclude": crawl_setting.get("exclude", ""),
@@ -160,22 +171,96 @@ def _crawl_config_dict(ctx: RunContext) -> dict:
         }
         telegram = by_type.get("telegram") or []
         if telegram:
-            config["telegram"] = {"enable": True, "channels": {s.name: s.config for s in telegram}}
-        for key in ("google", "yandex", "github", "gist"):
+            channels = {}
+            for s in telegram:
+                cfg = dict(s.config or {})
+                task = {"include": cfg.get("include", ""), "exclude": cfg.get("exclude", "")}
+                if cfg.get("rename"):
+                    task["rename"] = cfg["rename"]
+                channels[s.name] = {
+                    "include": cfg.get("include", ""),
+                    "exclude": cfg.get("exclude", ""),
+                    "task": task,
+                }
+            config["telegram"] = {"enable": True, "pages": telegram[0].config.get("pages", 5), "channels": channels}
+        github_rows = by_type.get("github") or []
+        if github_rows:
+            cfg = dict(github_rows[0].config or {})
+            config["github"] = {
+                "enable": True,
+                "pages": cfg.get("pages", 2),
+                "exclude": cfg.get("exclude", ""),
+                "exclude_repos": cfg.get("exclude_repos", []),
+                "patterns": cfg.get("patterns", []),
+            }
+            for key, value in (("token", "GH_TOKEN"), ("cookie", "GH_COOKIE")):
+                if cfg.get(key):
+                    credentials[value] = cfg[key]
+        gist_rows = by_type.get("gist") or []
+        if gist_rows:
+            cfg = dict(gist_rows[0].config or {})
+            mode = cfg.get("mode", "timeline")
+            config["gist"] = {
+                "enable": True,
+                "include": cfg.get("include", ""),
+                "exclude": cfg.get("exclude", ""),
+                "exclude_owners": cfg.get("exclude_owners", []),
+                "max_gists": cfg.get("max_gists", 100),
+                "max_filesize": cfg.get("max_filesize", 65536),
+                "patterns": cfg.get("patterns", []),
+                "pages": cfg.get("pages", 2),
+            }
+            if mode == "search":
+                # 搜索模式：频道按 GH_COOKIE 是否存在切换 search/timeline
+                if cfg.get("gh_cookie"):
+                    credentials["GH_COOKIE"] = cfg["gh_cookie"]
+                if cfg.get("token"):
+                    credentials["GH_TOKEN"] = cfg["token"]
+            elif cfg.get("token"):
+                credentials.setdefault("GH_TOKEN", cfg["token"])
+        for key in ("google", "yandex"):
             rows = by_type.get(key) or []
             if rows:
-                config[key] = {"enable": True, **rows[0].config}
+                config[key] = {"enable": True, **{k: v for k, v in rows[0].config.items() if k not in ("token", "cookie")}}
         pages = by_type.get("page") or []
         if pages:
-            config["pages"] = [{**s.config, "enable": True} for s in pages]
+            config["pages"] = [
+                {k: v for k, v in (s.config or {}).items() if k not in ("token", "cookie")} | {"enable": True}
+                for s in pages
+            ]
         repos = by_type.get("repo") or []
         if repos:
-            config["repositories"] = [s.config for s in repos]
+            config["repositories"] = [dict(s.config or {}) for s in repos]
         scripts = by_type.get("script") or []
         if scripts:
-            config["scripts"] = [{**s.config, "enable": True} for s in scripts]
+            config["scripts"] = [{**dict(s.config or {}), "enable": True} for s in scripts]
         project_setting = (session.get(Setting, "proxy").value if session.get(Setting, "proxy") else {}) or {}
         config["proxy"] = dict(project_setting)
-        return config
+        return config, credentials
     finally:
         session.close()
+
+
+class _env_scope:
+    """临时注入环境变量，退出时还原（线程内串行使用）。"""
+
+    def __init__(self, values: dict[str, str]) -> None:
+        self._values = values
+        self._backup: dict[str, str | None] = {}
+
+    def __enter__(self) -> "_env_scope":
+        import os
+
+        for key, value in self._values.items():
+            self._backup[key] = os.environ.get(key)
+            os.environ[key] = value
+        return self
+
+    def __exit__(self, *_) -> None:
+        import os
+
+        for key, old in self._backup.items():
+            if old is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = old
