@@ -261,9 +261,9 @@ import { params as paramsApi, results as resultsApi, schedules as schedulesApi, 
 const MODE = { crawl: '仅爬取', aggregate: '回测', full: '爬取+聚合' };
 const STATUS = { running: '运行中', success: '成功', failed: '失败', cancelled: '已取消', 'partial-success': '部分发布', pending: '等待中' };
 const STAGE_LIST = {
-  crawl: ['init', 'crawl', 'done'],
+  crawl: ['init', 'crawl', 'validate', 'done'],
   aggregate: ['init', 'fetch', 'check', 'convert', 'publish', 'done'],
-  full: ['init', 'crawl', 'fetch', 'check', 'convert', 'publish', 'done'],
+  full: ['init', 'crawl', 'validate', 'fetch', 'check', 'convert', 'publish', 'done'],
 };
 const STAGE_LABEL = { init: '初始化', crawl: '爬取源', validate: '订阅验证', fetch: '节点拉取', check: '验活', convert: '转换', publish: '发布', done: '完成' };
 const SCHED_KINDS = [

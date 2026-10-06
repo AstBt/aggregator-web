@@ -560,6 +560,137 @@ class TestVerifiedPersistence:
         assert not called
 
 
+class TestValidateStage:
+    def test_validate_method_overrides_crawl_flags(self, client, operator_token, db_session):
+        """引擎提供 validate 方法时以其结果为准（覆盖 crawl 阶段的可达标记）。"""
+        from models import Subscription
+
+        engine = _scripted_engine(subscriptions=[
+            ("https://ok.example.com/a", "PAGE", True),
+            ("https://bad.example.com/b", "PAGE", True),  # crawl 阶段标为可达
+        ])
+        engine.__class__.validate = lambda self, ctx, urls: {u: "bad" not in u for u in urls}
+        restore = _use_engine(engine)
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        rows = db_session.query(Subscription).all()
+        assert [r.url for r in rows] == ["https://ok.example.com/a"], "bad 订阅经 validate 判不可达，不入库"
+
+    def test_engine_without_validate_keeps_crawl_flags(self, client, operator_token, db_session):
+        """引擎无 validate 方法时保留 crawl 阶段自带标记（测试替身默认语义）。"""
+        from models import Subscription
+
+        restore = _use_engine(_scripted_engine(subscriptions=[
+            ("https://ok.example.com/a", "PAGE", True),
+            ("https://bad.example.com/b", "PAGE", False),
+        ]))
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            data = _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert data["status"] == "success"
+        assert [r.url for r in db_session.query(Subscription).all()] == ["https://ok.example.com/a"]
+
+    def test_run_logs_report_validation_summary(self, client, operator_token, db_session):
+        """订阅验证阶段在运行日志中有汇总与阶段标记（不再静默卡在爬取源）。"""
+        from models import CrawlRun, RunLog
+
+        restore = _use_engine(_scripted_engine(subscriptions=[("https://ok.example.com/a", "PAGE", True)]))
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        run = db_session.get(CrawlRun, run_id)
+        assert run.stage == "done"
+        logs = [r.message for r in db_session.query(RunLog).filter_by(run_id=run_id)]
+        assert any("subscriptions validated" in m for m in logs), logs
+
+
+class TestRealEngineFetchAndValidate:
+    def test_fetch_runs_concurrently_with_markers(self, monkeypatch):
+        """RealEngine.fetch 并发执行订阅拉取（串行在数千订阅下需数小时），且来源标记保留。"""
+        import time
+
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import workflow
+
+        def fake_wrapper(task):
+            time.sleep(0.25)
+            return task.taskid, [{"name": task.name, "type": "vless", "server": "s.example.com", "port": 443}]
+
+        monkeypatch.setattr(workflow, "executewrapper", fake_wrapper)
+
+        from engine_adapter.engine import RealEngine
+        from engine_adapter.runner import RunContext
+
+        ctx = RunContext(run_id=0, mode="full", params={"num_threads": 8}, source_ids=[], bind_target_ids=[])
+        urls = [f"https://s{i}.example.com/sub" for i in range(8)]
+        started = time.monotonic()
+        proxies = RealEngine().fetch(ctx, urls, [])
+        elapsed = time.monotonic() - started
+        assert len(proxies) == 8
+        assert all(p["_kind"] == "sub" for p in proxies)
+        assert {p["_source_sub"] for p in proxies} == set(urls), "每个节点保留来源订阅标记"
+        assert elapsed < 1.5, f"串行执行需 ≥2s，实测 {elapsed:.2f}s 表明未并发"
+
+    def test_validate_checks_urls_concurrently(self, monkeypatch):
+        """RealEngine.validate 并发探测订阅可达性并回传逐 URL 结果。"""
+        import time
+
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import crawl.helpers
+
+        calls = []
+
+        def fake_check(url, *args, **kwargs):
+            calls.append(url)
+            time.sleep(0.2)
+            return ("bad" not in url, False)
+
+        monkeypatch.setattr(crawl.helpers, "check_status", fake_check)
+
+        from engine_adapter.engine import RealEngine
+        from engine_adapter.runner import RunContext
+
+        ctx = RunContext(run_id=0, mode="full", params={"num_threads": 8}, source_ids=[], bind_target_ids=[])
+        urls = ["https://ok.example.com/a", "https://bad.example.com/b"] + [f"https://s{i}.example.com" for i in range(6)]
+        started = time.monotonic()
+        result = RealEngine().validate(ctx, urls)
+        elapsed = time.monotonic() - started
+        assert result["https://ok.example.com/a"] is True
+        assert result["https://bad.example.com/b"] is False
+        assert len(result) == 8
+        assert elapsed < 1.2, f"串行执行需 ≥1.6s，实测 {elapsed:.2f}s 表明未并发"
+
+    def test_validate_dedups_urls_before_probing(self, monkeypatch):
+        """跨源重复命中的订阅只探测一次（4600 原始 → 2800 唯一，避免 60%+ 重复工作）。"""
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import crawl.helpers
+
+        calls = []
+        monkeypatch.setattr(crawl.helpers, "check_status", lambda url, *a, **k: calls.append(url) or (True, False))
+
+        from engine_adapter.engine import RealEngine
+        from engine_adapter.runner import RunContext
+
+        ctx = RunContext(run_id=0, mode="full", params={"num_threads": 4}, source_ids=[], bind_target_ids=[])
+        urls = ["https://a.example.com/x", "https://b.example.com/y", "https://a.example.com/x", "https://a.example.com/x"]
+        result = RealEngine().validate(ctx, urls)
+        assert result == {"https://a.example.com/x": True, "https://b.example.com/y": True}
+        assert sorted(calls) == ["https://a.example.com/x", "https://b.example.com/y"]
+
+
 class TestPersistRobustness:
     def test_batch_dedup_same_url_with_reachable_priority(self, db_session):
         """同一 url 在一批内重复出现（跨源命中）：去重且可达状态优先，不触发唯一约束。"""

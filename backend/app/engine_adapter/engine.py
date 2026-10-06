@@ -12,6 +12,7 @@ import os
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 import yaml
@@ -115,15 +116,62 @@ class RealEngine:
             for proxy in result.nodes.proxies:
                 loose.append(LooseNode(source=source_name, proxy=dict(proxy)))
 
-        reachable = _validate_subscriptions([url for url, _ in found], ctx)
+        # 可达性验证拆到 validate()（独立阶段）：爬取阶段不做探测，避免长时间静默
         return CrawlOutcome(
-            subscriptions=[(url, origin, reachable.get(url, False)) for url, origin in found],
+            subscriptions=[(url, origin, True) for url, origin in found],
             loose=loose,
         )
 
+    # ---------- 订阅验证 ----------
+    def validate(self, ctx: RunContext, urls: list[str]) -> dict[str, bool]:
+        """并发探测订阅可达性（check_status），定期上报进度。
+
+        数千订阅的探测可能持续数十分钟，进度日志（每 15s）保证阶段不再静默。
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
+        from crawl.helpers import check_status
+
+        urls = list(dict.fromkeys(urls))  # 跨源重复命中只探测一次（去重后计数单调递增）
+        if not urls:
+            return {}
+        results: dict[str, bool] = {}
+        threads = max(1, int(ctx.params.get("num_threads", 32)))
+        total = len(urls)
+        done = 0
+        last_log = [time.monotonic()]
+
+        pool = ThreadPoolExecutor(max_workers=threads)
+        try:
+            futures = {pool.submit(check_status, url, 2, 5, 12, 72): url for url in urls}
+            for future in as_completed(futures):
+                ctx.check_cancelled()
+                url = futures[future]
+                ok = False
+                try:
+                    mask = future.result()
+                    ok = bool(isinstance(mask, tuple) and mask and mask[0])
+                except Exception:  # noqa: BLE001 — 单个订阅探测失败按不可达处理
+                    ok = False
+                results[url] = ok
+                done += 1
+                now = time.monotonic()
+                if done == total or now - last_log[0] >= 15:
+                    last_log[0] = now
+                    logger.info(f"[Validate] subscription check progress: {done}/{total}, reachable: {sum(results.values())}")
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
+        return results
+
     # ---------- 拉取节点 ----------
     def fetch(self, ctx: RunContext, subscriptions: list[str], loose: list["LooseNode"]) -> list[dict]:
-        """两路拉取：订阅 URL 解析（kind=sub）+ 散节点（kind=crawl，按源打标）。"""
+        """两路拉取：订阅 URL 解析（kind=sub）+ 散节点（kind=crawl，按源打标）。
+
+        并发执行（数千订阅串行拉取需数小时），单个订阅失败不拖垮整轮，
+        定期上报进度；取消在任务完成的安全点生效。
+        """
+        from concurrent.futures import ThreadPoolExecutor, as_completed
+
         import executable
         import workflow
         from config.models import NodeInput
@@ -158,18 +206,35 @@ class RealEngine:
             tasks.append((task, {"_kind": "crawl", "_source": source}))
 
         proxies: list[dict] = [{**item.proxy, "_kind": "crawl", "_source": item.source} for item in loose if item.proxy]
-        for task, marker in tasks:
-            if ctx.cancelled:
-                break
-            try:
-                _taskid, items = workflow.executewrapper(task)
-            except Exception as exc:  # noqa: BLE001 — 单个订阅失败不拖垮整轮
-                logger.warning(f"[WebEngine] fetch failed, name={task.name}, error={exc}")
-                continue
-            for item in items:
-                merged = dict(item)
-                merged.update(marker)
-                proxies.append(merged)
+        if not tasks:
+            return proxies
+
+        threads = max(1, int(ctx.params.get("num_threads", 32)))
+        total = len(tasks)
+        done = 0
+        last_log = [time.monotonic()]
+        pool = ThreadPoolExecutor(max_workers=threads)
+        try:
+            futures = {pool.submit(workflow.executewrapper, task): (task, marker) for task, marker in tasks}
+            for future in as_completed(futures):
+                ctx.check_cancelled()
+                task, marker = futures[future]
+                try:
+                    _taskid, items = future.result()
+                except Exception as exc:  # noqa: BLE001 — 单个订阅失败不拖垮整轮
+                    logger.warning(f"[WebEngine] fetch failed, name={task.name}, error={exc}")
+                    items = []
+                for item in items:
+                    merged = dict(item)
+                    merged.update(marker)
+                    proxies.append(merged)
+                done += 1
+                now = time.monotonic()
+                if done == total or now - last_log[0] >= 15:
+                    last_log[0] = now
+                    logger.info(f"[Fetch] subscription fetch progress: {done}/{total}, proxies: {len(proxies)}")
+        finally:
+            pool.shutdown(wait=False, cancel_futures=True)
         return proxies
 
     # ---------- 验活 ----------
@@ -416,28 +481,6 @@ def _build_sections(ctx: RunContext) -> list[tuple[str, str, object, dict]]:
     return sections
 
 
-def _validate_subscriptions(urls: list[str], ctx: RunContext) -> dict[str, bool]:
-    """并发探测订阅可达性（复用引擎的 check_status）。"""
-    from functools import partial
-
-    import utils
-    from crawl.helpers import check_status
-
-    if not urls:
-        return {}
-    masks = utils.multi_thread_run(
-        func=partial(check_status, proxy=""),
-        tasks=[[url, 2, 5, 12, 72] for url in urls],
-        num_threads=int(ctx.params.get("num_threads", 32)),
-        show_progress=False,
-    )
-    reachable: dict[str, bool] = {}
-    for url, mask in zip(urls, masks):
-        ok = False
-        if isinstance(mask, tuple) and len(mask) >= 1:
-            ok = bool(mask[0])
-        reachable[url] = ok
-    return reachable
 class _env_scope:
     """临时注入环境变量，退出时还原（线程内串行使用）。"""
 

@@ -71,7 +71,10 @@ class EngineOutcome:
 
 
 class Engine(Protocol):
-    """引擎协议：抓取→拉取→验活→转换；真实实现见 engine.py。"""
+    """引擎协议：抓取→（可选）订阅验证→拉取→验活→转换；真实实现见 engine.py。
+
+    validate 为可选方法：未实现时 runner 沿用 crawl 返回的可达标记（测试替身语义）。
+    """
 
     def crawl(self, ctx: RunContext) -> CrawlOutcome: ...
 
@@ -118,9 +121,9 @@ class HermeticEngine:
         return specs
 
 
-STAGES_CRAWL = ["init", "crawl", "done"]
+STAGES_CRAWL = ["init", "crawl", "validate", "done"]
 STAGES_AGGREGATE = ["init", "fetch", "check", "convert", "publish", "done"]
-STAGES_FULL = ["init", "crawl", "fetch", "check", "convert", "publish", "done"]
+STAGES_FULL = ["init", "crawl", "validate", "fetch", "check", "convert", "publish", "done"]
 
 
 class TaskRunner:
@@ -258,6 +261,27 @@ class TaskRunner:
                     crawl_outcome = self.engine.crawl(ctx)
                     outcome.subscriptions = crawl_outcome.subscriptions
                     outcome.loose = crawl_outcome.loose
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "crawl",
+                        f"subscriptions fetched: {len(outcome.subscriptions)}, loose nodes: {len(outcome.loose)}",
+                    )
+                    # 订阅验证独立成阶段：数千订阅的可达性探测可能持续数十分钟，必须有阶段与进度可见
+                    _stage("validate")
+                    reachable = _validate_outcome(self.engine, ctx, outcome.subscriptions)
+                    outcome.subscriptions = [
+                        (url, origin, reachable.get(url, ok)) for url, origin, ok in outcome.subscriptions
+                    ]
+                    validated = sum(1 for *_t, ok in outcome.subscriptions if ok)
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "validate",
+                        f"subscriptions validated: {validated}/{len(outcome.subscriptions)} reachable",
+                    )
                     if run.mode == "crawl":
                         # 仅爬取：订阅级验证（可达性）通过才入订阅池；散节点未验活不入节点库
                         persisted = _persist_validated_subscriptions(session, outcome.subscriptions)
@@ -266,15 +290,7 @@ class TaskRunner:
                             run_id,
                             "INFO",
                             "crawl",
-                            f"subscriptions fetched: {len(outcome.subscriptions)}, validated into pool: {persisted}, loose nodes (unverified, not stored): {len(outcome.loose)}",
-                        )
-                    else:
-                        log(
-                            session,
-                            run_id,
-                            "INFO",
-                            "crawl",
-                            f"subscriptions fetched: {len(outcome.subscriptions)}, loose nodes: {len(outcome.loose)}",
+                            f"validated into pool: {persisted}, loose nodes (unverified, not stored): {len(outcome.loose)}",
                         )
 
                 if run.mode in ("aggregate", "full"):
@@ -355,6 +371,17 @@ class TaskRunner:
     @property
     def running_id(self) -> int | None:
         return self._current
+
+
+def _validate_outcome(engine: Engine, ctx: RunContext, subscriptions: list[tuple[str, str, bool]]) -> dict[str, bool]:
+    """订阅可达性验证：引擎提供 validate 方法时以其结果为准；否则保留 crawl 阶段自带标记。
+
+    返回 {url: reachable}；空 dict 表示沿用原标记（测试替身/脚本引擎的默认语义）。
+    """
+    validate = getattr(engine, "validate", None)
+    if validate is None:
+        return {}
+    return validate(ctx, [url for url, _origin, _ok in subscriptions]) or {}
 
 
 def _max_fails(session: Session) -> int:
