@@ -332,46 +332,242 @@ class TestRemotePublish:
         assert not (tmp_path / "out" / "v2ray.txt").exists()  # 空产物不落盘
 
 
-class TestPersistSubscriptions:
-    def test_unreachable_new_subscription_increments_errors(self, db_session):
-        """混合可达/不可达订阅入库：不可达新行 errors 从 0 起算（曾因 None+1 崩溃）。"""
-        from datetime import datetime
+def _node_key(proxy: dict) -> str:
+    return f"{proxy.get('server', '')}:{proxy.get('port', '')}:{proxy.get('type', '')}"
 
-        from engine_adapter.runner import _persist_subscriptions
-        from models import CrawlRun, Subscription
 
-        run = CrawlRun(run_uuid="persist-1", trigger="manual", mode="crawl", status="running")
-        db_session.add(run)
+def _scripted_engine(subscriptions=(), fetch_map=None, alive_keys=None, loose=()):
+    """确定性脚本引擎：crawl 返回给定订阅/散节点；fetch 按订阅映射产出节点；check 按 key 过滤存活。"""
+    from engine_adapter.runner import CrawlOutcome
+
+    class _Engine:
+        def crawl(self, ctx):
+            ctx.check_cancelled()
+            return CrawlOutcome(subscriptions=list(subscriptions), loose=list(loose))
+
+        def fetch(self, ctx, subscriptions, loose):
+            ctx.check_cancelled()
+            proxies = []
+            for url in subscriptions:
+                for proxy in (fetch_map or {}).get(url, []):
+                    proxies.append({**proxy, "_kind": "sub", "_source_sub": url})
+            for item in loose:
+                if item.proxy:
+                    proxies.append({**item.proxy, "_kind": "crawl", "_source": item.source})
+            return proxies
+
+        def check(self, ctx, proxies):
+            ctx.check_cancelled()
+            if alive_keys is None:
+                return [dict(p) for p in proxies]
+            return [dict(p) for p in proxies if _node_key(p) in alive_keys]
+
+        def convert(self, ctx, alive):
+            ctx.check_cancelled()
+            return []
+
+    return _Engine()
+
+
+def _use_engine(engine):
+    """注入脚本引擎并返回还原函数。"""
+    from engine_adapter import runner as runner_module
+
+    runner = runner_module.TaskRunner.instance()
+    previous = runner.engine
+    runner.engine = engine
+    return lambda: setattr(runner, "engine", previous)
+
+
+class TestVerifiedPersistence:
+    def test_crawl_mode_persists_only_reachable_subscriptions(self, client, operator_token, db_session):
+        """仅爬取：订阅级验证（可达性）通过才入订阅池；不可达的新订阅不入库。"""
+        from models import Subscription
+
+        restore = _use_engine(_scripted_engine(subscriptions=[
+            ("https://ok.example.com/a", "PAGE", True),
+            ("https://bad.example.com/b", "PAGE", False),
+        ]))
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            data = _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert data["status"] == "success"
+        rows = db_session.query(Subscription).all()
+        assert [r.url for r in rows] == ["https://ok.example.com/a"]
+        assert rows[0].status == "alive" and rows[0].errors == 0
+
+    def test_crawl_mode_does_not_persist_unverified_loose_nodes(self, client, operator_token, db_session):
+        """仅爬取：散节点未经验活，不写入节点库。"""
+        from engine_adapter.runner import LooseNode
+        from models import Node
+
+        restore = _use_engine(_scripted_engine(
+            subscriptions=[("https://ok.example.com/a", "PAGE", True)],
+            loose=[LooseNode(source="tg-a", proxy={"name": "n1", "type": "vless", "server": "s1.example.com", "port": 443})],
+        ))
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert db_session.query(Node).count() == 0
+
+    def test_full_mode_persists_only_verified_subscriptions_and_alive_nodes(self, client, operator_token, db_session, tmp_path):
+        """爬取+聚合：仅「产出存活节点」的订阅入订阅结果；节点库整体替换为验活存活集。"""
+        from models import Node, StorageTarget, Subscription
+
+        target = db_session.query(StorageTarget).filter_by(name="data-local").first()
+        target.config = {"dir": str(tmp_path / "local"), "keep": 5}
+        # 旧数据：上轮验活确认可用的订阅与节点
+        db_session.add(Subscription(url="https://old.example.com/x", origin="PAGE", status="alive", errors=0, node_count=1))
         db_session.flush()
-        _persist_subscriptions(
-            db_session,
-            run.id,
-            [
-                ("https://alive.example.com/a", "TELEGRAM", True),
-                ("https://dead.example.com/b", "PAGE", False),
+        run_old = __import__("models").CrawlRun(run_uuid="old-run", trigger="manual", mode="full", status="success", stage="done", params={}, stats={})
+        db_session.add(run_old)
+        db_session.flush()
+        db_session.add_all([
+            Node(run_id=run_old.id, name="old-sub-node", protocol="vless", server="old-sub.example.com", port=443,
+                 kind="sub", source_sub="https://old.example.com/x", delay_ms=200, alive=True,
+                 raw={"name": "old-sub-node", "type": "vless", "server": "old-sub.example.com", "port": 443}),
+            Node(run_id=run_old.id, name="old-loose", protocol="vmess", server="old-loose.example.com", port=80,
+                 kind="crawl", source="tg-a", delay_ms=300, alive=True,
+                 raw={"name": "old-loose", "type": "vmess", "server": "old-loose.example.com", "port": 80}),
+        ])
+        db_session.commit()
+
+        new_node = {"name": "new-1", "type": "vless", "server": "new1.example.com", "port": 443}
+        dead_new_node = {"name": "new-dead", "type": "vmess", "server": "newdead.example.com", "port": 80}
+        restore = _use_engine(_scripted_engine(
+            subscriptions=[
+                ("https://new.example.com/a", "PAGE", True),
+                ("https://new.example.com/dead", "PAGE", False),
             ],
-        )
-        alive = db_session.query(Subscription).filter_by(url="https://alive.example.com/a").first()
-        dead = db_session.query(Subscription).filter_by(url="https://dead.example.com/b").first()
-        assert alive.status == "alive" and alive.errors == 0
-        assert dead.status == "pending" and dead.errors == 1
-        # 再次入库不可达订阅：errors 累加
-        _persist_subscriptions(db_session, run.id, [("https://dead.example.com/b", "PAGE", False)])
-        assert dead.errors == 2
+            fetch_map={
+                "https://new.example.com/a": [new_node],
+                "https://old.example.com/x": [{"name": "old-sub-node2", "type": "vless", "server": "old-sub2.example.com", "port": 443}],
+            },
+            # 仅新订阅的节点与旧散节点存活；旧订阅节点与新死节点均失效
+            alive_keys={_node_key(new_node), _node_key({"server": "old-loose.example.com", "port": 80, "type": "vmess"})},
+        ))
+        try:
+            run_id = client.post(
+                "/api/tasks", json={"mode": "full", "bind_target_ids": [target.id]}, headers=auth_header(operator_token)
+            ).json()["data"]["id"]
+            data = _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert data["status"] == "success"
+        assert data["stats"]["subs_usable"] == 1
+
+        db_session.expire_all()
+        subs = {s.url: s for s in db_session.query(Subscription).all()}
+        assert subs["https://new.example.com/a"].status == "alive"
+        assert subs["https://new.example.com/a"].node_count == 1
+        assert "https://new.example.com/dead" not in subs, "不可达的新订阅不入库"
+        # 旧订阅复核失败：失效计数 +1、节点数清零，容忍期内保留
+        assert subs["https://old.example.com/x"].status == "dead"
+        assert subs["https://old.example.com/x"].errors == 1
+        assert subs["https://old.example.com/x"].node_count == 0
+
+        nodes = {n.name: n for n in db_session.query(Node).all()}
+        assert set(nodes) == {"new-1", "old-loose"}, "节点库仅保留验活存活节点"
+        assert nodes["old-loose"].kind == "crawl" and nodes["old-loose"].source == "tg-a", "旧散节点复核后保留来源归属"
+        assert nodes["new-1"].source_sub == "https://new.example.com/a"
+
+    def test_old_pool_subscription_removed_at_max_fails(self, client, operator_token, db_session, tmp_path):
+        """旧订阅连续复核失败达 max_fails 后从订阅池移除。"""
+        from models import StorageTarget, Subscription
+
+        target = db_session.query(StorageTarget).filter_by(name="data-local").first()
+        target.config = {"dir": str(tmp_path / "local"), "keep": 5}
+        db_session.add(Subscription(url="https://dying.example.com/x", origin="PAGE", status="dead", errors=4))  # max_fails=5（种子默认）
+        db_session.commit()
+
+        restore = _use_engine(_scripted_engine(subscriptions=[], fetch_map={"https://dying.example.com/x": []}, alive_keys=set()))
+        try:
+            run_id = client.post(
+                "/api/tasks", json={"mode": "aggregate", "bind_target_ids": [target.id]}, headers=auth_header(operator_token)
+            ).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        db_session.expire_all()
+        assert db_session.query(Subscription).filter_by(url="https://dying.example.com/x").first() is None
+
+    def test_proxy_scope_applies_during_run_and_restores(self, client, operator_token, db_session, monkeypatch):
+        """爬取参数启用本地代理时：运行期间注入代理 env（引擎全链路经代理回退直连），结束后恢复。"""
+        import os
+
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import httpclient
+
+        from models import Setting
+
+        setting = db_session.get(Setting, "crawl")
+        setting.value = {**dict(setting.value or {}), "proxy": {"enable": True, "address": "http://127.0.0.1:7897", "test_url": "https://api.github.com/zen"}}
+        db_session.commit()
+
+        calls = {}
+        seen_env = {}
+
+        def fake_configure(enable, address, test_url, context=None):
+            calls["args"] = (enable, address, test_url)
+            os.environ["HTTP_PROXY"] = address
+            return address
+
+        monkeypatch.setattr(httpclient, "configure_proxy", fake_configure)
+
+        class EnvProbeEngine(_scripted_engine().__class__):
+            def crawl(self, ctx):
+                seen_env["HTTP_PROXY"] = os.environ.get("HTTP_PROXY")
+                return super().crawl(ctx)
+
+        restore = _use_engine(EnvProbeEngine())
+        before = os.environ.get("HTTP_PROXY")
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert calls["args"][0] is True and calls["args"][1] == "http://127.0.0.1:7897"
+        assert seen_env["HTTP_PROXY"] == "http://127.0.0.1:7897", "运行期间代理 env 已注入"
+        assert os.environ.get("HTTP_PROXY") == before, "运行结束后代理 env 已恢复"
+
+    def test_proxy_scope_skipped_when_disabled(self, client, operator_token, db_session, monkeypatch):
+        """代理未启用时不调用 configure_proxy。"""
+        from engine_adapter.registry import ensure_engine_on_path
+
+        ensure_engine_on_path()
+        import httpclient
+
+        from models import Setting
+
+        setting = db_session.get(Setting, "crawl")
+        setting.value = {**dict(setting.value or {}), "proxy": {"enable": False, "address": "http://127.0.0.1:7897"}}
+        db_session.commit()
+
+        called = []
+        monkeypatch.setattr(httpclient, "configure_proxy", lambda *a, **kw: called.append(1) or "")
+        restore = _use_engine(_scripted_engine())
+        try:
+            run_id = client.post("/api/tasks", json={"mode": "crawl"}, headers=auth_header(operator_token)).json()["data"]["id"]
+            _wait_run(client, operator_token, run_id)
+        finally:
+            restore()
+        assert not called
 
 
 class TestPersistRobustness:
     def test_batch_dedup_same_url_with_reachable_priority(self, db_session):
         """同一 url 在一批内重复出现（跨源命中）：去重且可达状态优先，不触发唯一约束。"""
-        from engine_adapter.runner import _persist_subscriptions
-        from models import CrawlRun, Subscription
+        from engine_adapter.runner import _persist_validated_subscriptions
+        from models import Subscription
 
-        run = CrawlRun(run_uuid="persist-2", trigger="manual", mode="crawl", status="running")
-        db_session.add(run)
-        db_session.flush()
-        _persist_subscriptions(
+        _persist_validated_subscriptions(
             db_session,
-            run.id,
             [
                 ("https://dup.example.com/a", "TELEGRAM", False),
                 ("https://dup.example.com/a", "GITHUB", True),

@@ -26,7 +26,6 @@ DEFAULT_SETTINGS: dict[str, dict] = {
         "regularize": True,
     },
     "export": {"node_limit": 5000, "emoji": True},
-    "system": {"nodes_keep_runs": 20},
 }
 
 

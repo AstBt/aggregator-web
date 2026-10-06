@@ -76,7 +76,7 @@
               <td><span class="tag gray plain">{{ n.source || '—' }}</span></td>
               <td><a class="btn link" @click="openDetail(n)">详情</a></td>
             </tr>
-            <tr v-if="!rows.length"><td colspan="9" class="empty-tip">暂无散节点（请在任务中启用爬取源并执行爬取）</td></tr>
+            <tr v-if="!rows.length"><td colspan="9" class="empty-tip">暂无可用散节点（散节点需经任务验活确认可用后才入节点库）</td></tr>
           </tbody>
         </table>
       </div>

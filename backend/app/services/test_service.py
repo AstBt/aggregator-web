@@ -124,6 +124,23 @@ def _resolve_params(params: dict | None) -> dict:
 
 
 # ---------- 订阅测试 ----------
+def _crawl_proxy() -> str:
+    """爬取参数页启用的本地代理地址（订阅验证与爬取同路径，见 FR-3.14a）。"""
+    try:
+        session = db.SessionLocal()
+        try:
+            from services import settings_service
+
+            proxy = (settings_service.get_crawl(session).get("proxy") or {})
+        finally:
+            session.close()
+        if proxy.get("enable") and proxy.get("address"):
+            return str(proxy["address"])
+    except Exception:  # noqa: BLE001 — 设置缺失时直连
+        pass
+    return ""
+
+
 def _probe_subscription(url: str) -> tuple[bool, int]:
     """探测单个订阅：可达性 + 节点数（默认实现，测试可 monkeypatch）。"""
     import sys
@@ -132,7 +149,7 @@ def _probe_subscription(url: str) -> tuple[bool, int]:
         sys.path.insert(0, str(PROJECT_DIR / "subscribe"))
     from crawl.helpers import check_status
 
-    available, _expired = check_status(url, retry=2, proxy="")
+    available, _expired = check_status(url, retry=2, proxy=_crawl_proxy())
     if not available:
         return False, 0
     return True, _count_sub_nodes(url)
@@ -151,7 +168,7 @@ def _count_sub_nodes(url: str) -> int:
         from crawl.extract import PROTOCOL_REGEX
     except Exception:
         return 0
-    text = utils.http_get(url=url, retry=1, timeout=12) or ""
+    text = utils.http_get(url=url, retry=1, timeout=12, proxy=_crawl_proxy()) or ""
     if not text:
         return 0
     if utils.isb64encode(content=text):

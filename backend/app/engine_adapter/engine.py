@@ -32,6 +32,43 @@ except Exception:  # pragma: no cover
 
 _GROUP_PLACEHOLDER = "web"  # 无分组模型下供引擎筛选的占位分组名
 
+_PROXY_ENV = ("http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY", "no_proxy", "NO_PROXY")
+
+
+class proxy_scope:
+    """本地代理作用域：爬取参数启用本地代理时，运行期间注入进程级代理 env，结束恢复。
+
+    复用引擎 CLI 的 httpclient.configure_proxy 语义（探测代理可达后才注入，外部请求
+    代理优先、传输失败自动回退直连，localhost 强制直连）。任务全局串行执行，进程级
+    env 注入无并发冲突；节点验活不受影响（流量经 mihomo 直连节点，控制器为 localhost）。
+    """
+
+    def __init__(self, session) -> None:
+        self._session = session
+        self._snapshot: dict[str, str | None] = {}
+        self.applied = ""
+
+    def __enter__(self) -> "proxy_scope":
+        from models import Setting
+
+        setting = self._session.get(Setting, "crawl")
+        proxy = (dict(setting.value) if setting else {}).get("proxy") or {}
+        self._snapshot = {key: os.environ.get(key) for key in _PROXY_ENV}
+        if proxy.get("enable") and proxy.get("address"):
+            import httpclient
+
+            self.applied = httpclient.configure_proxy(
+                True, proxy["address"], proxy.get("test_url") or "https://api.github.com/zen"
+            )
+        return self
+
+    def __exit__(self, *exc) -> None:
+        for key, value in self._snapshot.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+
 
 class RealEngine:
     """生产引擎。"""

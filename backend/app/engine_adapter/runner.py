@@ -66,6 +66,8 @@ class EngineOutcome:
     proxies: list[dict] = field(default_factory=list)  # 原始节点（含 _kind/_source/_source_sub 标记）
     alive: list[dict] = field(default_factory=list)  # 验活存活节点
     artifacts: list[dict] = field(default_factory=list)  # [{"target","path","size"}]
+    pool_size: int = 0  # 本轮复核的旧订阅池规模
+    verified_subs: int = 0  # 验活确认可用（产出存活节点）的订阅数
 
 
 class Engine(Protocol):
@@ -93,7 +95,8 @@ class HermeticEngine:
 
     def fetch(self, ctx: RunContext, subscriptions: list[str], loose: list[LooseNode]) -> list[dict]:
         ctx.check_cancelled()
-        return [{**p, "_kind": "sub"} for p in self._proxies]
+        source_sub = subscriptions[0] if subscriptions else ""
+        return [{**p, "_kind": "sub", "_source_sub": source_sub} for p in self._proxies]
 
     def check(self, ctx: RunContext, proxies: list[dict]) -> list[dict]:
         ctx.check_cancelled()
@@ -245,29 +248,44 @@ class TaskRunner:
             session.commit()
 
         try:
-            with capture_engine_logs(run_id):
+            from .engine import proxy_scope
+
+            with capture_engine_logs(run_id), proxy_scope(session) as proxy:
+                if proxy.applied:
+                    log(session, run_id, "INFO", "runner", f"本地代理已启用（{proxy.applied}）：爬取/订阅验证/拉取/发布经代理中转，节点验活仍直连")
                 if run.mode in ("crawl", "full"):
                     _stage("crawl")
                     crawl_outcome = self.engine.crawl(ctx)
                     outcome.subscriptions = crawl_outcome.subscriptions
                     outcome.loose = crawl_outcome.loose
-                    _persist_subscriptions(session, run_id, outcome.subscriptions)
-                    log(
-                        session,
-                        run_id,
-                        "INFO",
-                        "crawl",
-                        f"subscriptions fetched: {len(outcome.subscriptions)}, loose nodes: {len(outcome.loose)}",
-                    )
+                    if run.mode == "crawl":
+                        # 仅爬取：订阅级验证（可达性）通过才入订阅池；散节点未验活不入节点库
+                        persisted = _persist_validated_subscriptions(session, outcome.subscriptions)
+                        log(
+                            session,
+                            run_id,
+                            "INFO",
+                            "crawl",
+                            f"subscriptions fetched: {len(outcome.subscriptions)}, validated into pool: {persisted}, loose nodes (unverified, not stored): {len(outcome.loose)}",
+                        )
+                    else:
+                        log(
+                            session,
+                            run_id,
+                            "INFO",
+                            "crawl",
+                            f"subscriptions fetched: {len(outcome.subscriptions)}, loose nodes: {len(outcome.loose)}",
+                        )
 
                 if run.mode in ("aggregate", "full"):
-                    pool, remains = _load_pool_and_remains(session, run_id)
+                    pool, remains = _load_pool_and_remains(session)
+                    outcome.pool_size = len(pool)
                     log(
                         session,
                         run_id,
                         "INFO",
                         "pool",
-                        f"系统库读取订阅池 {len(pool)} 条、remains {len(remains)} 节点（旧数据唯一来源）",
+                        f"系统库读取订阅池 {len(pool)} 条、可用节点 {len(remains)} 个（复核对象 = 之前验活确认可用数据）",
                     )
                     subscriptions = list(pool)
                     for url, _origin, reachable in outcome.subscriptions:
@@ -281,7 +299,6 @@ class TaskRunner:
                     checked = proxies + remains
                     alive = self.engine.check(ctx, checked)
                     outcome.alive = alive
-                    alive_keys = {_node_key(p) for p in alive}
                     log(
                         session,
                         run_id,
@@ -289,7 +306,15 @@ class TaskRunner:
                         "check",
                         f"proxies check finished, total: {len(checked)}, alive: {len(alive)}",
                     )
-                    _persist_nodes(session, run_id, checked, alive_keys)
+                    # 验活后才写库：订阅结果仅存「存活且产出可用节点」者，节点库整体替换为存活集
+                    outcome.verified_subs = _persist_verified(session, run_id, alive, outcome.subscriptions)
+                    log(
+                        session,
+                        run_id,
+                        "INFO",
+                        "persist",
+                        f"verified subscriptions into pool: {outcome.verified_subs}, alive nodes stored: {len(alive)}",
+                    )
                     _stage("convert")
                     outcome.artifacts = self.engine.convert(ctx, alive)
                     for spec in outcome.artifacts:
@@ -332,8 +357,25 @@ class TaskRunner:
         return self._current
 
 
-def _persist_subscriptions(session: Session, run_id: int, subscriptions: list[tuple[str, str, bool]]) -> None:
-    """订阅入库：批内按 url 去重（跨源可能重复命中；可达优先），单次提交。"""
+def _max_fails(session: Session) -> int:
+    """旧订阅复核失败的容忍次数（爬取参数页 max_fails），达到即移出订阅池。"""
+    from models import Setting
+
+    setting = session.get(Setting, "crawl")
+    value = (dict(setting.value) if setting else {}).get("max_fails")
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return 3
+
+
+def _persist_validated_subscriptions(session: Session, subscriptions: list[tuple[str, str, bool]]) -> int:
+    """仅爬取模式订阅入库：仅订阅级验证（可达性）通过者入订阅池。
+
+    - 新订阅不可达：不入库（订阅结果不保存未验证数据）
+    - 已有订阅本次不可达：复核失败计数 +1，达 max_fails 移出订阅池
+    返回本轮入库（验证通过）的订阅数。
+    """
     from datetime import datetime
 
     from models import Subscription
@@ -347,53 +389,108 @@ def _persist_subscriptions(session: Session, run_id: int, subscriptions: list[tu
         if prev is None or (reachable and not prev[1]):
             merged[url] = (origin, reachable)
 
+    max_fails = _max_fails(session)
     now = datetime.now()
+    persisted = 0
     for url, (origin, reachable) in merged.items():
         row = session.query(Subscription).filter_by(url=url).first()
-        if row is None:
-            row = Subscription(url=url, origin=origin, first_seen_at=now)
-            session.add(row)
-        row.origin = origin
-        row.last_seen_at = now
-        row.status = "alive" if reachable else "pending"
-        row.errors = 0 if reachable else (row.errors or 0) + 1
         if reachable:
+            if row is None:
+                row = Subscription(url=url, origin=origin, first_seen_at=now)
+                session.add(row)
+            row.origin = origin
+            row.status = "alive"
+            row.errors = 0
+            row.last_seen_at = now
             row.last_alive_at = now
+            persisted += 1
+        elif row is not None:
+            row.errors = (row.errors or 0) + 1
+            row.status = "dead"
+            row.last_seen_at = now
+            if row.errors >= max_fails:
+                session.delete(row)
     session.commit()
+    return persisted
 
 
-def _load_pool_and_remains(session: Session, run_id: int) -> tuple[list[str], list[dict]]:
-    """订阅池 = 上轮 full/aggregate 存活节点的来源订阅；remains = 上轮存活节点（v2.3）。"""
-    from models import Node
+def _load_pool_and_remains(session: Session) -> tuple[list[str], list[dict]]:
+    """旧数据复核集 = 系统库当前可用数据：订阅池（订阅表全部行）+ 可用节点（节点库全部行）。
 
-    last = (
-        session.query(CrawlRun)
-        .filter(CrawlRun.mode.in_(("full", "aggregate")), CrawlRun.status.in_(("success", "partial-success")))
-        .filter(CrawlRun.id != run_id)
-        .order_by(CrawlRun.id.desc())
-        .first()
-    )
-    if last is None:
-        return [], []
-    nodes = session.query(Node).filter_by(run_id=last.id, alive=True).all()
-    pool = []
-    for node in nodes:
-        if node.source_sub and node.source_sub not in pool:
-            pool.append(node.source_sub)
-    remains = [dict(n.raw) | {"name": n.name, "delay": n.delay_ms} for n in nodes]
+    系统库只保存验活确认可用的数据，因此直接读表即为「之前任务验活后确认可用」的复核对象；
+    remains 附带 _kind/_source/_source_sub 标记，复核存活后入库仍保留来源归属。
+    """
+    from models import Node, Subscription
+
+    pool = [row.url for row in session.query(Subscription).order_by(Subscription.id)]
+    remains = []
+    for node in session.query(Node).order_by(Node.id):
+        raw = dict(node.raw or {})
+        raw.update(
+            {
+                "name": node.name,
+                "delay": node.delay_ms,
+                "_kind": node.kind,
+                "_source": node.source,
+                "_source_sub": node.source_sub,
+            }
+        )
+        remains.append(raw)
     return pool, remains
 
 
-def _persist_nodes(session: Session, run_id: int, checked: list[dict], alive_keys: set[str] | None = None) -> None:
-    """节点入库：全部被检节点（含失效），按 fetch 标记区分散节点/订阅节点。
+def _persist_verified(
+    session: Session, run_id: int, alive: list[dict], discovered: list[tuple[str, str, bool]]
+) -> int:
+    """验活后写库（单次提交准事务）：订阅结果与节点库只保留验活确认可用的数据。
 
-    alive_keys 为 None 时视为全部存活（测试替身语义）；否则按 server:port:type 判定。
+    - 订阅结果：仅「验活存活且产出可用节点」的订阅入库/更新（node_count=本轮存活节点数）；
+      旧订阅复核失败计数 +1 并标记失效，连续失败达 max_fails 移出订阅池
+    - 节点库：整体替换为本次验活存活集（含旧节点复核存活者，来源归属随 remains 标记保留）
+    返回本轮确认可用的订阅数。
     """
-    from models import Node
+    from datetime import datetime
 
-    for proxy in checked:
+    from models import Node, Subscription
+
+    now = datetime.now()
+    max_fails = _max_fails(session)
+    origins = {(url or "").strip(): origin for url, origin, _ok in discovered if (url or "").strip()}
+
+    # 订阅维度：本轮各订阅产出的存活节点数
+    sub_alive_count: dict[str, int] = {}
+    for proxy in alive:
+        source_sub = proxy.get("_source_sub")
+        if proxy.get("_kind") == "sub" and source_sub:
+            sub_alive_count[source_sub] = sub_alive_count.get(source_sub, 0) + 1
+
+    for url, count in sub_alive_count.items():
+        row = session.query(Subscription).filter_by(url=url).first()
+        if row is None:
+            row = Subscription(url=url, origin=origins.get(url, "TEMPORARY"), first_seen_at=now)
+            session.add(row)
+        row.status = "alive"
+        row.errors = 0
+        row.node_count = count
+        row.last_seen_at = now
+        row.last_alive_at = now
+
+    verified = set(sub_alive_count)
+    for row in session.query(Subscription).all():
+        if row.url in verified:
+            continue
+        row.errors = (row.errors or 0) + 1
+        row.status = "dead"
+        row.node_count = 0
+        row.last_seen_at = now
+        if row.errors >= max_fails:
+            session.delete(row)
+
+    # 节点库整体替换（同一事务内删除+写入，失败回滚则系统库保持原状）
+    session.query(Node).delete()
+    session.flush()
+    for proxy in alive:
         raw = {k: v for k, v in proxy.items() if k not in ("_kind", "_source", "_source_sub")}
-        alive = True if alive_keys is None else _node_key(proxy) in alive_keys
         session.add(
             Node(
                 run_id=run_id,
@@ -405,11 +502,12 @@ def _persist_nodes(session: Session, run_id: int, checked: list[dict], alive_key
                 source=proxy.get("_source"),
                 source_sub=proxy.get("_source_sub") or proxy.get("sub"),
                 delay_ms=proxy.get("delay"),
-                alive=alive,
+                alive=True,
                 raw=raw,
             )
         )
     session.commit()
+    return len(verified)
 
 
 def _node_key(proxy: dict) -> str:
@@ -442,6 +540,9 @@ def _stats(mode: str, outcome: EngineOutcome) -> dict:
         }
         stats["subs_alive"] = len(alive_urls)
     if mode in ("aggregate", "full"):
+        if mode == "aggregate":
+            stats["subs_total"] = outcome.pool_size
+        stats["subs_usable"] = outcome.verified_subs
         stats["nodes_total"] = len(outcome.proxies)
         stats["nodes_alive"] = len(outcome.alive)
         stats["artifacts"] = [

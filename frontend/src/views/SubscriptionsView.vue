@@ -1,10 +1,10 @@
 <template>
   <div>
     <div class="mini-stats">
-      <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">📡</span><div><div class="v">{{ stats.total }}</div><div class="k">累计订阅</div></div></div>
-      <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">✅</span><div><div class="v">{{ stats.alive }}</div><div class="k">可用订阅（上轮验活）</div></div></div>
-      <div class="mini"><span class="m-ico" style="background:#fff2f0;color:#cf1322">❌</span><div><div class="v">{{ stats.dead }}</div><div class="k">失效订阅</div></div></div>
-      <div class="mini"><span class="m-ico" style="background:#f5f5f5;color:rgba(0,0,0,.45)">🕓</span><div><div class="v">{{ stats.pending }}</div><div class="k">待验证</div></div></div>
+      <div class="mini"><span class="m-ico" style="background:#e6f4ff;color:#0958d9">📡</span><div><div class="v">{{ stats.total }}</div><div class="k">订阅池（验证后入库）</div></div></div>
+      <div class="mini"><span class="m-ico" style="background:#f6ffed;color:#389e0d">✅</span><div><div class="v">{{ stats.alive }}</div><div class="k">可用订阅（验活确认）</div></div></div>
+      <div class="mini"><span class="m-ico" style="background:#fff2f0;color:#cf1322">❌</span><div><div class="v">{{ stats.dead }}</div><div class="k">复核失效（容忍期）</div></div></div>
+      <div class="mini"><span class="m-ico" style="background:#f5f5f5;color:rgba(0,0,0,.45)">🔄</span><div><div class="v">{{ stats.testing }}</div><div class="k">测试中</div></div></div>
     </div>
     <div class="card">
       <div class="card-hd">
@@ -23,7 +23,7 @@
           <option v-for="o in origins" :key="o" :value="o">{{ o }}</option>
         </select>
         <select class="input" style="width:120px;height:32px;font-size:12.5px" v-model="filters.status" @change="load">
-          <option value="">全部状态</option><option value="alive">存活</option><option value="dead">失效</option><option value="pending">待验证</option>
+          <option value="">全部状态</option><option value="alive">存活</option><option value="dead">失效</option><option value="testing">测试中</option>
         </select>
         <input class="input" style="flex:1;min-width:220px" placeholder="🔍 搜索订阅 URL / 域名" v-model="filters.keyword" @keyup.enter="load">
         <button class="btn sm primary" @click="load">查询</button>
@@ -116,11 +116,11 @@ const testDone = ref(0);
 const testTotal = ref(0);
 const origins = ['TELEGRAM', 'GITHUB', 'GIST', 'PAGE', 'GOOGLE', 'YANDEX', 'V2RAYSE', 'TEMPORARY', 'OWNED'];
 const filters = reactive({ origin: '', status: '', keyword: '' });
-const stats = reactive({ total: 0, alive: 0, dead: 0, pending: 0 });
+const stats = reactive({ total: 0, alive: 0, dead: 0, testing: 0 });
 const selectedCount = computed(() => Object.values(checked.value).filter(Boolean).length);
 
-const statusClass = (s) => ({ alive: 'ok', dead: 'err', pending: 'warn', testing: 'info' }[s] || 'gray');
-const statusLabel = (s) => ({ alive: '存活', dead: '失效', pending: '待验证', testing: '测试中' }[s] || s);
+const statusClass = (s) => ({ alive: 'ok', dead: 'err', testing: 'info' }[s] || 'gray');
+const statusLabel = (s) => ({ alive: '存活', dead: '失效', testing: '测试中' }[s] || s);
 const hostOf = (url) => { try { return new URL(url).hostname; } catch { return ''; } };
 const fmt = (iso) => (iso ? iso.replace('T', ' ').slice(0, 16) : '—');
 
@@ -133,7 +133,7 @@ async function load() {
   allChecked.value = false;
 }
 async function loadStats() {
-  for (const status of ['alive', 'dead', 'pending']) {
+  for (const status of ['alive', 'dead', 'testing']) {
     const data = await resultsApi.subscriptions({ status, page_size: 1 });
     stats[status] = data.total;
   }

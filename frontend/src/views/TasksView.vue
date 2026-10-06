@@ -91,7 +91,8 @@
         <!-- 统计 chips -->
         <div class="run-meta" v-if="current.stats">
           <span class="chip" v-if="current.stats.subs_total != null"><b>{{ current.stats.subs_total }}</b>订阅候选</span>
-          <span class="chip" v-if="current.stats.subs_alive != null"><b>{{ current.stats.subs_alive }}</b>存活订阅</span>
+          <span class="chip" v-if="current.stats.subs_usable != null"><b>{{ current.stats.subs_usable }}</b>可用订阅</span>
+          <span class="chip" v-else-if="current.stats.subs_alive != null"><b>{{ current.stats.subs_alive }}</b>验证通过订阅</span>
           <span class="chip" v-if="current.stats.nodes_total != null"><b>{{ current.stats.nodes_total }}</b>抓取节点</span>
           <span class="chip" v-if="current.stats.nodes_alive != null"><b>{{ current.stats.nodes_alive }}</b>存活节点</span>
           <span class="chip"><b>{{ artifacts.length }}</b>产物</span>
@@ -159,13 +160,13 @@
       <div class="section-title">运行模式</div>
       <div class="radio-cards c3">
         <div class="radio-card" :class="{ sel: draft.mode === 'crawl' }" @click="draft.mode = 'crawl'">
-          <h5>🕷️ 仅爬取</h5><p>跑取源并验证订阅，结果入系统库；不绑定存储目标</p>
+          <h5>🕷️ 仅爬取</h5><p>爬取源并验证订阅可达性，仅验证通过者入订阅池；散节点需聚合验活后才入节点库；不绑定存储目标</p>
         </div>
         <div class="radio-card" :class="{ sel: draft.mode === 'aggregate' }" @click="draft.mode = 'aggregate'">
-          <h5>🧬 回测</h5><p>不爬取：从系统库读上轮订阅池与 remains → 重新拉取 → 验活 → 写入绑定目标</p>
+          <h5>🧬 回测</h5><p>不爬取：复核系统库订阅池与可用节点 → 重新拉取 → 验活 → 可用结果回写系统库 → 写入绑定目标</p>
         </div>
         <div class="radio-card" :class="{ sel: draft.mode === 'full' }" @click="draft.mode = 'full'">
-          <h5>⚡ 爬取 + 聚合</h5><p>完整流程：爬取 → 与系统库订阅池及 remains 合并 → 验活 → 转换 → 写入绑定目标</p>
+          <h5>⚡ 爬取 + 聚合</h5><p>完整流程：爬取 → 与系统库可用数据合并复核 → 拉节点 → 验活 → 仅可用结果入系统库 → 转换 → 写入绑定目标</p>
         </div>
       </div>
 
@@ -324,9 +325,9 @@ const paramGroups = computed(() => {
     {
       title: '验活参数',
       rows: {
-        线程数: p.num_threads ?? '—',
-        最大存活延迟: (p.max_delay ?? '—') + ' ms',
-        验活超时: (p.timeout ?? '—') + ' ms',
+        线程数: p.num_threads ?? '默认（取验活参数页）',
+        最大存活延迟: p.max_delay != null ? p.max_delay + ' ms' : '默认（取验活参数页）',
+        验活超时: p.timeout != null ? p.timeout + ' ms' : '默认（取验活参数页）',
         测试URL: aliveParams.value.primary_test_url || aliveParams.value.test_urls?.[0] || '—（取验活参数页配置）',
       },
     },
@@ -335,7 +336,7 @@ const paramGroups = computed(() => {
       title: '发布与旧数据',
       rows: {
         绑定目标: binds.length ? binds.join(' + ') : '—（仅爬取不绑定）',
-        旧数据来源: '系统库（上轮订阅池 / remains）',
+        旧数据来源: '系统库（订阅池 / 可用节点复核）',
       },
     },
   ];
@@ -345,10 +346,11 @@ const resultRows = computed(() => {
   if (!t) return {};
   const s = t.stats || {};
   const rows = {};
-  if (s.subs_total != null) rows['订阅候选'] = `${s.subs_total} 条（去重后入订阅池）`;
-  if (s.subs_alive != null) rows['存活订阅'] = `${s.subs_alive} 条`;
+  if (s.subs_total != null) rows['订阅候选'] = t.mode === 'aggregate' ? `${s.subs_total} 条（系统库复核）` : `${s.subs_total} 条（去重后）`;
+  if (s.subs_usable != null) rows['可用订阅（入订阅池）'] = `${s.subs_usable} 条`;
+  else if (s.subs_alive != null) rows['验证通过订阅'] = `${s.subs_alive} 条`;
   if (s.nodes_total != null) rows['抓取节点'] = `${s.nodes_total} 个`;
-  if (s.nodes_alive != null) rows['存活节点'] = `${s.nodes_alive} 个`;
+  if (s.nodes_alive != null) rows['存活节点（入节点库）'] = `${s.nodes_alive} 个`;
   rows['转换产物'] = `${artifacts.value.length} 个`;
   rows['当前状态'] = statusLabel(t.status);
   return rows;
