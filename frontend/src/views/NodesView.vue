@@ -88,7 +88,8 @@
 
     <!-- 节点详情抽屉 -->
     <div class="drawer-mask" @click="detail=null"></div>
-    <aside class="drawer" :class="{ open: !!detail }">
+    <aside class="drawer" :class="{ open: !!detail }" :style="{ width: drawerW + 'px' }">
+      <div class="drawer-resize" @pointerdown="startResize"></div>
       <div class="drawer-hd"><h3>节点详情</h3><span class="btn link" @click="detail=null" style="font-size:16px">✕</span></div>
       <div class="drawer-bd" v-if="detail">
         <div class="kv-row"><span class="k">名称</span><span class="v">{{ detail.name }}</span></div>
@@ -152,10 +153,12 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 
 import { dashboard as dashboardApi, exports as exportsApi, results as resultsApi, tasks as tasksApi, testJobs } from '../api';
+import { useDrawerResize } from '../utils/drawerResize';
 
 const rows = ref([]);
 const total = ref(0);
 const detail = ref(null);
+const { width: drawerW, startResize } = useDrawerResize('node-detail', 540);
 const artifacts = ref([]);
 const sources = ref([]);
 const checked = ref({});

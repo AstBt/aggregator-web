@@ -329,3 +329,29 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13px}
 .grp-detail label:last-child{border-bottom:none}
 .grp-detail .t{font-size:11px;color:var(--text-3);margin-left:auto}
 @media (max-width:1280px){.bind-grid,.grp-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- 创建任务弹窗：定时构建器（子组件） ---------- */
+.sched-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.sched-opt{border:1.5px solid var(--border);border-radius:9px;padding:11px 13px;cursor:pointer;transition:all .15s;background:#fff;font-size:12.5px;display:flex;align-items:center;gap:9px}
+.sched-opt:hover{border-color:#91caff}
+.sched-opt.sel{border-color:var(--primary);background:#f0f7ff;font-weight:500}
+.sched-opt .so-ico{font-size:15px}
+.sched-fields{margin-top:12px;display:flex;gap:12px;align-items:center;flex-wrap:wrap;font-size:13px;color:var(--text-2)}
+.stepper{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:7px;overflow:hidden;background:#fff}
+.stepper button{width:30px;height:32px;border:none;background:#fff;cursor:pointer;font-size:15px;color:var(--text-2)}
+.stepper button:hover{background:#f2f3f5;color:var(--primary)}
+.stepper input{width:46px;height:32px;border:none;border-left:1px solid var(--border);border-right:1px solid var(--border);text-align:center;font-size:13px}
+.time-input{height:32px;border:1px solid var(--border);border-radius:7px;padding:0 10px;font-size:13px;background:#fff}
+.week-pick{display:inline-flex;gap:6px}
+.week-pick span{width:32px;height:32px;border:1px solid var(--border);border-radius:7px;display:flex;align-items:center;justify-content:center;font-size:12px;cursor:pointer;background:#fff;color:var(--text-2)}
+.week-pick span.on{background:var(--primary);border-color:var(--primary);color:#fff;font-weight:600}
+.sched-preview{background:#f6f9ff;border:1px dashed #bfd8ff;border-radius:8px;padding:10px 14px;font-size:12.5px;color:#0958d9;margin-top:12px}
+@media (max-width:1280px){.sched-grid{grid-template-columns:repeat(2,1fr)}}
+
+/* ---------- 抽屉左缘宽度拖拽手柄 ---------- */
+.drawer-resize{position:absolute;top:0;bottom:0;left:0;width:6px;cursor:col-resize;z-index:2;touch-action:none}
+.drawer-resize::after{content:"";position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);width:3px;height:44px;border-radius:2px;background:#bfbfbf;opacity:0;transition:opacity .15s}
+.drawer-resize:hover{background:rgba(22,119,255,.06)}
+.drawer-resize:hover::after{opacity:1}
+body.col-resizing{user-select:none;cursor:col-resize}
+body.col-resizing .drawer-resize::after{opacity:1;background:var(--primary)}

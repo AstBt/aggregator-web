@@ -69,8 +69,10 @@
     </section>
 
     <!-- ======== 任务详情抽屉 ======== -->
-    <a-drawer :open="drawerOpen" :title="`#${current?.id} · ${modeLabel(current?.mode)}`" width="720" @close="closeDetail">
+    <a-drawer :open="drawerOpen" :title="`#${current?.id} · ${modeLabel(current?.mode)}`" :width="drawerW" :content-wrapper-style="{ transition: 'transform .22s ease' }" @close="closeDetail">
       <template v-if="current">
+        <!-- 左缘手柄：拖动调节抽屉宽度（absolute 相对 .ant-drawer-content-wrapper，不受 body 滚动影响） -->
+        <div class="drawer-resize" @pointerdown="startResize"></div>
         <!-- 状态与阶段 -->
         <div class="drawer-status">
           <span v-html="statusTag(current.status)"></span>
@@ -238,7 +240,7 @@
         </div>
         <div class="sched-fields">
           <template v-if="['minute','hour','day','week'].includes(sched.kind)">
-            <div class="stepper"><button @click="sched.n = Math.max(1, sched.n - 1)">－</button><input v-model.number="sched.n" /><button @click="sched.n + 1">＋</button></div>
+            <div class="stepper"><button @click="sched.n = Math.max(1, sched.n - 1)">－</button><input v-model.number="sched.n" @change="clampN" /><button @click="sched.n = Math.min(nMax, sched.n + 1)">＋</button></div>
             <span>{{ unitLabel }}</span>
           </template>
           <input v-if="['day','daily','weekly'].includes(sched.kind)" type="time" class="time-input" v-model="sched.time" />
@@ -257,6 +259,7 @@ import { computed, onBeforeUnmount, onMounted, reactive, ref, watch, nextTick } 
 import { Modal, message } from 'ant-design-vue';
 
 import { params as paramsApi, results as resultsApi, schedules as schedulesApi, sources as sourcesApi, storage as storageApi, tasks as tasksApi } from '../api';
+import { useDrawerResize } from '../utils/drawerResize';
 
 const MODE = { crawl: '仅爬取', aggregate: '回测', full: '爬取+聚合' };
 const STATUS = { running: '运行中', success: '成功', failed: '失败', cancelled: '已取消', 'partial-success': '部分发布', pending: '等待中' };
@@ -275,6 +278,7 @@ const SCHED_KINDS = [
 const runs = ref([]);
 const statusFilter = ref('all');
 const drawerOpen = ref(false);
+const { width: drawerW, startResize } = useDrawerResize('task-detail', 720);
 const current = ref(null);
 const logs = ref([]);
 const artifacts = ref([]);
@@ -392,6 +396,8 @@ function refreshGroups() {}
 function toggleBind(t) { if (t.enable) bound.value[t.id] = !bound.value[t.id]; }
 
 const unitLabel = computed(() => ({ minute: '分钟', hour: '小时', day: '天', week: '周' }[sched.kind] || ''));
+// 步进上限与原型一致：分钟 59 / 小时 23 / 天 30 / 周 4
+const nMax = computed(() => ({ minute: 59, hour: 23, day: 30, week: 4 }[sched.kind] || 1));
 const schedPreview = computed(() => {
   const wd = (sched.weekdays || []).map((d) => '周' + ['一', '二', '三', '四', '五', '六', '日'][d - 1]).join('');
   const T = sched.time;
@@ -406,6 +412,10 @@ const schedPreview = computed(() => {
 function toggleWeek(w) {
   sched.weekdays = sched.weekdays.includes(w) ? sched.weekdays.filter((d) => d !== w) : [...sched.weekdays, w].sort();
   if (!sched.weekdays.length) sched.weekdays = [w];
+}
+// 手动输入 N 后按类型上限钳制（读 DOM 值，非法输入回落为 1）
+function clampN(e) {
+  sched.n = Math.min(nMax.value, Math.max(1, Number(e.target.value) || 1));
 }
 
 const modeLabel = (m) => MODE[m] || m;

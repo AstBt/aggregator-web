@@ -60,7 +60,8 @@
 
     <!-- 订阅详情抽屉 -->
     <div class="drawer-mask" @click="detail=null"></div>
-    <aside class="drawer" :class="{ open: !!detail }">
+    <aside class="drawer" :class="{ open: !!detail }" :style="{ width: drawerW + 'px' }">
+      <div class="drawer-resize" @pointerdown="startResize"></div>
       <div class="drawer-hd">
         <h3>订阅详情</h3>
         <span class="btn link" @click="detail=null" style="font-size:16px">✕</span>
@@ -104,6 +105,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { message } from 'ant-design-vue';
 
 import { results as resultsApi, testJobs } from '../api';
+import { useDrawerResize } from '../utils/drawerResize';
 
 const rows = ref([]);
 const total = ref(0);
@@ -111,6 +113,7 @@ const detail = ref(null);
 const subNodes = ref([]);
 const checked = ref({});
 const allChecked = ref(false);
+const { width: drawerW, startResize } = useDrawerResize('subscription-detail', 540);
 const testing = ref(false);
 const testDone = ref(0);
 const testTotal = ref(0);
