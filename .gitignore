@@ -148,3 +148,6 @@ frontend/dist/
 
 # 保留环境变量示例文件
 !backend/.env.example
+
+# 上游参考框架克隆（非本项目源码，65MB）
+vue-vben-admin/
